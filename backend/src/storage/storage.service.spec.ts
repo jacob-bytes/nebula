@@ -27,12 +27,16 @@ function fileOf(overrides: {
 function makeBackend(id: 'telegram' | 's3', configured = true) {
   return {
     id,
+    // 只有对象存储可直接写入；Telegram 的上传由既有链路承担
+    writable: id === 's3',
     isConfigured: jest.fn(() => configured),
     openRead: jest.fn(async (request: { key: string; range?: unknown }) => ({
       stream: streamOf('payload'),
       info: { file_id: request.key, file_path: '', file_size: 7 },
     })),
     stat: jest.fn(async () => ({ size: 7 })),
+    put: jest.fn(async () => undefined),
+    deleteObject: jest.fn(async () => undefined),
   };
 }
 
@@ -104,6 +108,47 @@ describe('StorageService（存储路由）', () => {
       await expect(service.openReadStream(
         fileOf({ storageProvider: 's3', storageKey: 'k' }),
       )).rejects.toThrow(StorageConfigError);
+    });
+  });
+
+  describe('写能力分派', () => {
+    it('只有对象存储声明可写', () => {
+      const { service } = makeService();
+      expect(service.isWritable('s3')).toBe(true);
+      expect(service.isWritable('telegram')).toBe(false);
+    });
+
+    it('putObject 分派到对应后端并透传请求', async () => {
+      const { service, s3 } = makeService();
+      const body = Buffer.from('x');
+      await service.putObject('s3', { key: 'k', body, size: 1, contentType: 'text/plain' });
+      expect(s3.put).toHaveBeenCalledWith({ key: 'k', body, size: 1, contentType: 'text/plain' });
+    });
+
+    it('对不可写后端 put 时报配置错误（不允许静默丢弃字节）', async () => {
+      const { service, telegram } = makeService();
+      await expect(service.putObject('telegram', { key: 'k', body: Buffer.from('x') }))
+        .rejects.toThrow(StorageConfigError);
+      expect(telegram.put).not.toHaveBeenCalled();
+    });
+
+    it('后端未配置时拒绝写入', async () => {
+      const { service, s3 } = makeService({ s3Configured: false });
+      await expect(service.putObject('s3', { key: 'k', body: Buffer.from('x') }))
+        .rejects.toThrow(StorageConfigError);
+      expect(s3.put).not.toHaveBeenCalled();
+    });
+
+    it('deleteObject 对不可写后端是无操作（Telegram 侧由既有任务清理）', async () => {
+      const { service, telegram } = makeService();
+      await expect(service.deleteObject('telegram', 'k')).resolves.toBeUndefined();
+      expect(telegram.deleteObject).not.toHaveBeenCalled();
+    });
+
+    it('deleteObject 分派到对象存储', async () => {
+      const { service, s3 } = makeService();
+      await service.deleteObject('s3', 'k');
+      expect(s3.deleteObject).toHaveBeenCalledWith('k');
     });
   });
 

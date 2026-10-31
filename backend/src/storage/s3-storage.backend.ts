@@ -8,6 +8,7 @@ import {
   StorageReadRequest,
   StorageStat,
   StorageStream,
+  StorageWriteRequest,
 } from './storage.types';
 
 interface S3Config {
@@ -105,14 +106,15 @@ export class S3StorageBackend implements StorageBackend {
 
   private sign(
     config: S3Config,
-    method: 'GET' | 'HEAD',
+    method: 'GET' | 'HEAD' | 'PUT' | 'DELETE',
     target: { host: string; path: string },
     extraHeaders: Record<string, string>,
+    payloadHash: string = EMPTY_PAYLOAD_SHA256,
   ): Record<string, string> {
     const amzDate = toAmzDate();
     const headers: Record<string, string> = {
       host: target.host,
-      'x-amz-content-sha256': EMPTY_PAYLOAD_SHA256,
+      'x-amz-content-sha256': payloadHash,
       'x-amz-date': amzDate,
       ...extraHeaders,
     };
@@ -123,7 +125,7 @@ export class S3StorageBackend implements StorageBackend {
       host: target.host,
       path: target.path,
       headers,
-      payloadHash: EMPTY_PAYLOAD_SHA256,
+      payloadHash,
       amzDate,
       region: config.region,
       service: 's3',
@@ -180,6 +182,58 @@ export class S3StorageBackend implements StorageBackend {
       stream: Readable.fromWeb(response.body as never),
       info: { file_id: key, file_path: '', file_size: size },
     };
+  }
+
+  readonly writable = true;
+
+  /**
+   * 写入对象。
+   *
+   * 用 `UNSIGNED-PAYLOAD` 作为内容摘要：这样不必把整请求体读进内存算哈希，
+   * 大文件可以流式 PUT。代价是完整性不再由签名覆盖，改由 HTTPS 传输层保证；
+   * 因此自建 endpoint 必须走 https（或明确接受内网明文的风险）。
+   */
+  async put(request: StorageWriteRequest): Promise<void> {
+    const config = this.readConfig();
+    const key = String(request.key ?? '').trim();
+    if (!key) throw new StorageConfigError('S3 写请求缺少 object key');
+
+    const target = this.buildTarget(config, key);
+    const payloadHash = 'UNSIGNED-PAYLOAD';
+    const extraHeaders: Record<string, string> = { 'x-amz-content-sha256': payloadHash };
+    if (request.contentType) extraHeaders['content-type'] = request.contentType;
+    if (request.size !== undefined && Number.isFinite(request.size)) {
+      extraHeaders['content-length'] = String(request.size);
+    }
+
+    const response = await fetch(target.url, {
+      method: 'PUT',
+      headers: this.sign(config, 'PUT', target, extraHeaders, payloadHash),
+      body: request.body as never,
+      // Node 的 fetch 要求显式声明半双工流式请求体
+      ...(Buffer.isBuffer(request.body) ? {} : { duplex: 'half' as const }),
+    } as RequestInit);
+
+    if (!response.ok) {
+      const bodyText = await response.text().catch(() => '');
+      throw new Error(
+        `S3 写入失败：status=${response.status} key=${key}${bodyText ? ` body=${bodyText.slice(0, 200)}` : ''}`,
+      );
+    }
+    this.logger.debug(`S3 写入完成 key=${key} size=${request.size ?? 'unknown'}`);
+  }
+
+  async deleteObject(key: string): Promise<void> {
+    const config = this.readConfig();
+    const target = this.buildTarget(config, key);
+    const response = await fetch(target.url, {
+      method: 'DELETE',
+      headers: this.sign(config, 'DELETE', target, {}),
+    });
+    // 404 视为已删除：删除应当幂等
+    if (!response.ok && response.status !== 404) {
+      throw new Error(`S3 删除失败：status=${response.status} key=${key}`);
+    }
   }
 
   async stat(key: string): Promise<StorageStat> {

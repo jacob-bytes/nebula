@@ -27,6 +27,15 @@ export interface StorageStream {
   info: { file_id: string; file_path: string; file_size: number };
 }
 
+/** 写入请求：body 可为 Buffer（小文件）或 Readable（大文件流式）。 */
+export interface StorageWriteRequest {
+  key: string;
+  body: Buffer | Readable;
+  /** 已知字节数；流式写入时强烈建议提供，用于上游的长度校验与超时判定 */
+  size?: number;
+  contentType?: string;
+}
+
 export interface StorageStat {
   size: number | null;
 }
@@ -43,6 +52,18 @@ export interface StorageBackend {
   isConfigured(): boolean;
   openRead(request: StorageReadRequest): Promise<StorageStream>;
   stat(key: string): Promise<StorageStat>;
+
+  /**
+   * 是否支持直接写入。
+   *
+   * Telegram 后端为 false：上传仍由既有上传链路（账号池选号 / 镜像 / 副本）
+   * 承担，把 put 硬塞进该链路只会复制一套语义。对象存储后端为 true。
+   */
+  readonly writable: boolean;
+  /** 仅在 writable 为 true 时实现 */
+  put?(request: StorageWriteRequest): Promise<void>;
+  /** 仅在 writable 为 true 时实现 */
+  deleteObject?(key: string): Promise<void>;
 }
 
 /** 配置错误：让「配错了」与「对象不存在」在日志和响应里可区分。 */

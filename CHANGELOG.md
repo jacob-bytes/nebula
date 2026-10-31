@@ -6,6 +6,34 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.3.0] - 2026-10-31
+
+补齐存储抽象的写入路径：对象存储不再只读。
+
+### 新增
+
+- `StorageBackend` 端口新增写能力：`writable` 标志 + 可选的 `put` / `deleteObject`。
+  Telegram 后端显式声明 `writable=false`（上传仍由账号池/镜像链路承担），S3 后端为 true。
+- S3 写入：`UNSIGNED-PAYLOAD` 摘要 + 流式 PUT（`duplex: 'half'`），大文件不必读进内存；
+  删除幂等（404 视为已删除）。
+- `FILE_STORAGE_PROVIDER=telegram|s3`：设为 `s3` 时同步上传与批量上传直接写对象存储；
+  配置不完整或后端不可写时**直接报错，不静默回退**到 Telegram。
+- 对象 key 规则：`YYYY/MM/DD/<uuid>-<安全化文件名>`；落库失败会补偿删除已写入对象。
+- `StorageService.putObject` / `deleteObject` / `isWritable`，写请求按 provider 分派。
+
+### 变更
+
+- 同步上传在类型校验通过后分流：`FILE_STORAGE_PROVIDER` 未设置或为 `telegram` 时，
+  行为与改造前完全一致。
+- 版本号 `0.3.0`。
+
+### 已知限制
+
+- 异步上传、分片上传、Bot 私聊直链、镜像与副本扩散仍只支持 Telegram（其语义依赖
+  `message_id` / `file_id`）。
+- 删除文件不删除对象：既有设计明确「引用副本可能共享远端对象」，无引用计数时自动删对象
+  会误删；建议在 bucket 侧配置生命周期规则兜底（见 `docs/storage.md`）。
+
 ## [0.2.0] - 2026-10-31
 
 三项产品化改造：容器化部署、用户存储配额、存储抽象（读路径）。

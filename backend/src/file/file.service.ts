@@ -7,7 +7,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { Readable } from 'stream';
 import { Request } from 'express';
-import { randomBytes } from 'crypto';
+import { randomBytes, randomUUID } from 'crypto';
 import * as fs from 'fs';
 import { createReadStream, writeFileSync } from 'fs';
 import * as path from 'path';
@@ -1058,6 +1058,130 @@ export class FileService implements OnModuleInit {
     await this.quota.assertCanUpload(userId, incomingBytes);
   }
 
+  /**
+   * 解析「是否直接写入对象存储」。
+   *
+   * 返回 null 表示沿用 Telegram 链路（默认行为，与改造前一致）。
+   * 配置了 FILE_STORAGE_PROVIDER 但对应后端不可写/未配置时**不静默回退**：
+   * 直接抛配置错误，避免「以为在写 S3、实际写进了 Telegram」。
+   */
+  private resolveDirectUploadProvider(): 's3' | null {
+    const configured = (this.configService.get<string>('FILE_STORAGE_PROVIDER') ?? 'telegram')
+      .trim()
+      .toLowerCase();
+    if (configured === 'telegram' || configured === '') return null;
+    if (configured !== 's3') {
+      throw new Error(`FILE_STORAGE_PROVIDER 只支持 telegram / s3，当前值：${configured}`);
+    }
+    if (!this.storage || !this.storage.isWritable('s3')) {
+      throw new Error('FILE_STORAGE_PROVIDER=s3，但 StorageService 未装配或 S3 后端不可写');
+    }
+    return 's3';
+  }
+
+  /** 对象 key：按日期分桶 + uuid 前缀，避免同目录重名与热分区。 */
+  private buildObjectKey(name: string): string {
+    const datePrefix = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
+    const safeName = name
+      .replace(/[\\/\u0000-\u001f]/g, '_')
+      .replace(/^\u002e+/, '_')
+      .slice(0, 180) || 'file';
+    return `${datePrefix}/${randomUUID()}-${safeName}`;
+  }
+
+  /**
+   * 把上传内容直接写入对象存储并落库。
+   *
+   * 与 Telegram 路径的差异（有意为之）：
+   * - 不触发预缓存、镜像任务与副本扩散——这三者都以 Telegram 的 message/file_id 为前提；
+   * - `telegramFileId` 置空串（列不可为空），检索与读流以 `storageProvider/storageKey` 为准；
+   * - 对象写入成功但落库失败时做一次补偿删除，避免留下孤儿对象。
+   */
+  private async uploadToObjectStorage(
+    file: Express.Multer.File,
+    user: User,
+    originalName: string,
+    uploadName: string,
+    provider: 's3',
+    tagIds?: string[],
+  ): Promise<File> {
+    if (!this.storage) {
+      throw new Error('StorageService 未装配，无法写入对象存储');
+    }
+
+    const key = this.buildObjectKey(uploadName);
+    const useStream = Boolean(file.path) && fs.existsSync(file.path);
+    const body: Buffer | Readable = useStream ? createReadStream(file.path!) : file.buffer;
+
+    await this.storage.putObject(provider, {
+      key,
+      body,
+      size: file.size,
+      contentType: file.mimetype || 'application/octet-stream',
+    });
+
+    const newFile = this.fileRepository.create({
+      filename: key,
+      originalName,
+      mimeType: file.mimetype,
+      size: file.size,
+      // 非 Telegram 存储：该列 NOT NULL，用空串明确表达「不适用」
+      telegramFileId: '',
+      telegramFilePath: '',
+      uploaderId: user.id,
+      accessType: FileAccessType.PUBLIC,
+      maxAccessCount: this.accessCountDefault,
+      storageProvider: provider,
+      storageKey: key,
+    });
+
+    let savedFile: File;
+    try {
+      savedFile = await this.fileRepository.manager.transaction(async (manager) => {
+        const created = await manager.getRepository(File).save(newFile);
+        if (tagIds && tagIds.length > 0) {
+          await this.insertFileTags(manager, created.id, tagIds);
+        }
+        await this.namespaceService.acquire(manager, {
+          ownerId: user.id,
+          folderId: newFile.folderId ?? null,
+          name: originalName,
+          entityType: 'file',
+          entityId: created.id,
+        });
+        return created;
+      });
+    } catch (error: unknown) {
+      // 补偿：对象已写入但记录未落库 → 尽力删除，避免孤儿对象占用配额之外的空间
+      try {
+        await this.storage.deleteObject(provider, key);
+      } catch (cleanupError: unknown) {
+        this.logger.error(
+          `对象存储补偿删除失败 key=${key}：${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`,
+        );
+      }
+      if (isDatabaseUniqueViolation(error)) {
+        throw new ConflictException('当前目录已存在同名文件或文件夹');
+      }
+      throw error;
+    }
+
+    this.auditService.log({
+      action: 'file_upload',
+      userId: user.id,
+      resourceType: 'file',
+      resourceId: savedFile.id,
+      metadata: {
+        filename: originalName,
+        size: file.size,
+        mimeType: file.mimetype,
+        storageProvider: provider,
+      },
+    });
+
+    return savedFile;
+  }
+
   async upload(file: Express.Multer.File, user: User, tagIds?: string[]): Promise<File> {
     if (file.size > this.uploadConfig.maxFileSizeBytes) {
       throw new BadRequestException(`文件大小不能超过 ${this.uploadConfig.maxFileSizeBytes / 1024 / 1024}MB`);
@@ -1076,6 +1200,13 @@ export class FileService implements OnModuleInit {
 
     // GIF 文件加 .bin 后缀防止 Telegram 转码为 MP4
     const uploadName = file.mimetype === 'image/gif' ? originalName + '.bin' : originalName;
+
+    // 存储写入分流：配置 FILE_STORAGE_PROVIDER=s3 时直接写对象存储，
+    // 不进入 Telegram 账号池/镜像链路（那套语义只对 Telegram 成立）。
+    const directProvider = this.resolveDirectUploadProvider();
+    if (directProvider) {
+      return this.uploadToObjectStorage(file, user, originalName, uploadName, directProvider, tagIds);
+    }
 
     const useStream = file.path && fs.existsSync(file.path);
     const telegramFile = await this.uploadTelegramObject({

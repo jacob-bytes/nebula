@@ -9,6 +9,7 @@ import {
   StorageReadRequest,
   StorageStat,
   StorageStream,
+  StorageWriteRequest,
 } from './storage.types';
 
 /** 读路径选项：与既有下载链路保持同名参数，便于直接替换调用点。 */
@@ -98,6 +99,33 @@ export class StorageService {
       : (file.storageKey ?? '').trim();
     if (!key) throw new StorageConfigError(`文件缺少 ${providerId} 存储定位信息`);
     return backend.stat(key);
+  }
+
+  /** 该后端是否支持直接写入（当前仅对象存储支持）。 */
+  isWritable(id: StorageProviderId): boolean {
+    return this.getBackend(id).writable === true;
+  }
+
+  /**
+   * 写入对象。调用方（上传链路）负责保证：该 provider 支持写入，
+   * 且文件记录在同一逻辑事务/补偿范围内，避免「对象写成功但记录没落库」。
+   */
+  async putObject(id: StorageProviderId, request: StorageWriteRequest): Promise<void> {
+    const backend = this.getBackend(id);
+    if (!backend.writable || !backend.put) {
+      throw new StorageConfigError(`存储后端 ${id} 不支持直接写入`);
+    }
+    if (!backend.isConfigured()) {
+      throw new StorageConfigError(`存储后端 ${id} 未配置或配置不完整`);
+    }
+    await backend.put(request);
+  }
+
+  /** 删除对象；后端不支持写入时视为无操作（Telegram 侧的清理由既有任务承担）。 */
+  async deleteObject(id: StorageProviderId, key: string): Promise<void> {
+    const backend = this.getBackend(id);
+    if (!backend.writable || !backend.deleteObject) return;
+    await backend.deleteObject(key);
   }
 
   /** 启动期自检：把不可用的后端以 warn 暴露出来，而不是等到第一次下载才失败。 */
