@@ -189,7 +189,9 @@ function main() {
     }
   }
 
-  const updated = { ...brand, slug: next.slug, nameZh: next.nameZh, nameEn: next.nameEn, previous: prev };
+  // previous 必须推进为「本次改名前的品牌」，否则第二次改名仍会去替换早已不存在的旧标识。
+  const appliedFrom = { slug: brand.slug, nameZh: brand.nameZh, nameEn: brand.nameEn };
+  const updated = { ...brand, slug: next.slug, nameZh: next.nameZh, nameEn: next.nameEn, previous: appliedFrom };
   writeFileSync(BRAND_FILE, `${JSON.stringify(updated, null, 2)}\n`);
   writeGenerated(next);
 
