@@ -5,6 +5,14 @@
 
     <!-- 状态分支 -->
     <div class="share-container" :class="{ 'share-container--wide': state.kind === 'folder' }">
+      <!-- 品牌标识：对外分享页需要让访问者知道这是谁的服务 -->
+      <header class="share-brand">
+        <span class="share-brand-mark" aria-hidden="true" v-html="brandLogo"></span>
+        <span class="share-brand-name">{{ siteTitle }}</span>
+        <span class="share-brand-divider" aria-hidden="true"></span>
+        <span class="share-brand-kind">文件分享</span>
+      </header>
+
       <!-- 加载中 -->
       <div v-if="state.kind === 'loading'" class="state-card">
         <t-loading size="large" text="加载中..." />
@@ -87,6 +95,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
+import { usePublicConfigStore } from '../../stores/public-config';
 import { useRoute } from 'vue-router';
 import { useMediaPlaybackStore } from '../../stores/mediaPlayback';
 import { withXsrfHeader } from '../../utils/xsrf';
@@ -95,6 +104,11 @@ import FileShareCard from './FileShareCard.vue';
 import FolderShareBrowser from './FolderShareBrowser.vue';
 
 const route = useRoute();
+
+const siteTitle = computed(() => usePublicConfigStore().siteTitle);
+/** 品牌徽标：与侧边栏同一几何，纯装饰（外层已 aria-hidden） */
+const brandLogo =
+  '<svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2L17 6v8l-7 4-7-4V6l7-4z"/><path d="M10 10l7-4M10 10v8M10 10L3 6"/></svg>';
 const token = computed(() => String(route.params.token || ''));
 const mediaStore = useMediaPlaybackStore();
 
@@ -432,4 +446,28 @@ watch(token, async (newToken, oldToken) => {
 .retry-row {
   margin-top: 20px;
 }
+
+/* 品牌行：轻量、居中，不与内容卡抢注意力 */
+.share-brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 14px;
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+.share-brand-mark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-md);
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+.share-brand-name { color: var(--text-secondary); font-weight: 600; }
+.share-brand-divider { width: 1px; height: 12px; background: var(--border-default); }
+.share-brand-kind { font-size: 12px; }
 </style>

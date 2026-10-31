@@ -76,12 +76,33 @@
           </div>
         </div>
       </div>
+      <!-- 操作区：主操作保留按钮，低频/破坏性操作收进溢出菜单，
+           避免 5 个同权重文字按钮在窄屏互相挤压、误触删除 -->
       <div v-if="!file.isDeleted" class="mobile-file-card-actions">
-        <t-button size="small" theme="primary" variant="text" @click="emit('copy-link', file)">复制</t-button>
-        <t-button v-if="canPreviewFile(file)" size="small" variant="text" @click="emit('preview', file)">预览</t-button>
-        <t-button size="small" variant="text" @click="emit('download', file)">下载</t-button>
-        <t-button size="small" variant="text" @click="emit('tag-editor', file)">标签</t-button>
-        <t-button size="small" theme="danger" variant="text" @click="emit('delete', file)">删除</t-button>
+        <t-button
+          v-if="canPreviewFile(file)"
+          size="small"
+          variant="outline"
+          @click="emit('preview', file)"
+        >
+          预览
+        </t-button>
+        <t-button size="small" theme="primary" variant="outline" @click="emit('download', file)">
+          下载
+        </t-button>
+        <!-- 包一层容器：t-dropdown 的根节点不是块级元素，margin-left:auto 不生效 -->
+        <span class="mobile-more">
+          <t-dropdown
+            :options="moreOptions"
+            trigger="click"
+            placement="bottom-right"
+            @click="handleMore($event, file)"
+          >
+            <t-button size="small" variant="text" aria-label="更多操作" title="更多操作">
+              <span class="more-dots" aria-hidden="true">···</span>
+            </t-button>
+          </t-dropdown>
+        </span>
       </div>
       <div v-else class="mobile-file-card-actions">
         <t-button
@@ -178,6 +199,34 @@ const emit = defineEmits<{
   restore: [fileId: string];
   'force-delete': [fileId: string];
 }>();
+
+/**
+ * 溢出菜单项：低频操作与破坏性操作。
+ * 删除放在最后，文案直接写「删除」而不是图标，避免菜单项语义含糊。
+ */
+const moreOptions = [
+  { content: '复制链接', value: 'copy' },
+  { content: '管理标签', value: 'tag' },
+  { content: '删除', value: 'delete' },
+];
+
+function handleMore(data: unknown, file: FileItem) {
+  // TDesign 的 click 载荷没有对外类型导出，这里在边界处收窄
+  const value = (data as { value?: string } | null | undefined)?.value;
+  switch (value) {
+    case 'copy':
+      emit('copy-link', file);
+      break;
+    case 'tag':
+      emit('tag-editor', file);
+      break;
+    case 'delete':
+      emit('delete', file);
+      break;
+    default:
+      break;
+  }
+}
 </script>
 
 <style scoped src="./file-list-shared.css"></style>

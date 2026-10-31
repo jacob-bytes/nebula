@@ -33,6 +33,20 @@ const stubs = {
     template: '<span class="checkbox-stub" @click="$emit(\'change\')"><slot /></span>',
   },
   ThumbnailImg: { template: '<span class="thumb-stub" />' },
+  // 溢出菜单：把 options 渲染成可点击项，并以 { value } 回传点击载荷
+  't-dropdown': {
+    props: ['options'],
+    emits: ['click'],
+    template: `<span class="dropdown-stub">
+      <button
+        v-for="option in options"
+        :key="option.value"
+        class="menu-item-stub"
+        @click="$emit('click', { value: option.value })"
+      >{{ option.content }}</button>
+      <slot />
+    </span>`,
+  },
 };
 
 function fileItem(overrides: Partial<FileItem> = {}): FileItem {
@@ -237,24 +251,30 @@ describe('FileListMobileList（M6 拆分契约）', () => {
     expect(wrapper.emitted('touch-start')?.[1]?.[2]).toEqual(file);
   });
 
-  it('正常文件卡片提供复制/预览/下载/标签/删除五个动作', async () => {
+  it('正常文件卡片：预览/下载为按钮，复制/标签/删除收进溢出菜单', async () => {
     const file = fileItem();
     const wrapper = mountMobile({ files: [file], selectedIds: ['f1'] });
-    const buttons = wrapper.findAll('.mobile-file-card-actions .btn-stub');
 
-    expect(buttons).toHaveLength(5);
+    // 主操作只有「预览」「下载」两个按钮（第 3 个是菜单里的 ⋯ 触发按钮）
+    const buttons = wrapper.findAll('.mobile-file-card-actions > .btn-stub');
+    expect(buttons).toHaveLength(2);
+    expect(buttons[0]!.text()).toContain('预览');
+    expect(buttons[1]!.text()).toContain('下载');
 
-    await wrapper.get('.mobile-file-select').trigger('click');
+    // 选择行为由「全选工具栏」等用例覆盖，本用例只验证动作分发的契约
     await buttons[0]!.trigger('click');
     await buttons[1]!.trigger('click');
-    await buttons[2]!.trigger('click');
-    await buttons[3]!.trigger('click');
-    await buttons[4]!.trigger('click');
 
-    expect(wrapper.emitted('file-select')).toEqual([[file]]);
-    expect(wrapper.emitted('copy-link')).toEqual([[file]]);
     expect(wrapper.emitted('preview')).toEqual([[file]]);
     expect(wrapper.emitted('download')).toEqual([[file]]);
+
+    // 低频操作经溢出菜单回传，事件契约与拆分前一致
+    const menuItems = wrapper.findAll('.dropdown-stub .menu-item-stub');
+    expect(menuItems.map((item) => item.text())).toEqual(['复制链接', '管理标签', '删除']);
+
+    for (const item of menuItems) await item.trigger('click');
+
+    expect(wrapper.emitted('copy-link')).toEqual([[file]]);
     expect(wrapper.emitted('tag-editor')).toEqual([[file]]);
     expect(wrapper.emitted('delete')).toEqual([[file]]);
   });

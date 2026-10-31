@@ -1303,3 +1303,31 @@ html[data-theme="dark"] .t-button--variant-outline:hover,
 html[data-theme="dark"] .t-button--variant-dashed:hover {
   background-color: var(--accent);
 }
+
+/* --- 18.7 移动端操作区：主按钮 + 溢出菜单 --------------------------------- */
+.mobile-file-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  margin-top: 4px;
+  border-top: 1px solid var(--border-default);
+  flex-wrap: wrap;
+}
+.mobile-file-card-actions .t-button {
+  flex: none;
+  /* 触摸目标至少 40px 高（低于 HIG 的 44 但接近，按钮本身有内边距补偿） */
+  min-height: 40px;
+}
+/* 溢出菜单贴右：外层 span 承担 flex 布局，内层才是 dropdown 根节点 */
+.mobile-file-card-actions .mobile-more {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+}
+.mobile-file-card-actions .mobile-more .t-button { min-height: 40px; min-width: 40px; }
+.more-dots {
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 1px;
+}

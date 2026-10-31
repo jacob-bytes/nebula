@@ -1,12 +1,13 @@
 <template>
   <div class="file-share-card" :class="{ 'file-share-card--encrypted': isEncrypted }">
-    <!-- 预览大区：居中放大缩略图（图片/视频显示缩略图，其余显示大类型图标） -->
+    <!-- 预览大区：品牌色柔光 + 居中文件标识 -->
     <div class="file-share-hero">
+      <div class="hero-glow" aria-hidden="true"></div>
       <ThumbnailImg
         :file-id="info.id"
         :mime-type="info.mimeType"
         :file-name="info.name"
-        :size="160"
+        :size="128"
         :src="buildShareThumbnailUrl(props.token, props.info.id)"
         :context="`s:${props.token}`"
         :version="info.uploadVersion"
@@ -16,31 +17,36 @@
     <!-- 内容区 -->
     <div class="file-share-body">
       <h1 class="file-name" :title="info.name">{{ info.name }}</h1>
+
+      <!-- 元信息用 chip 表达，替代原来以「·」串联的裸文本 -->
       <div class="file-share-meta">
-        <span>{{ formatSize(info.size) }}</span>
-        <span class="meta-separator">·</span>
-        <span class="mime-type" :title="info.mimeType">{{ info.mimeType }}</span>
-        <span class="meta-separator">·</span>
-        <span>{{ formatDateTime(info.createdAt) }}</span>
-        <template v-if="info.expiresAt">
-          <span class="meta-separator">·</span>
-          <span class="expiry">有效期至 {{ formatDateTime(info.expiresAt) }}</span>
-        </template>
+        <span class="meta-chip">{{ formatSize(info.size) }}</span>
+        <span class="meta-chip" :title="info.mimeType">{{ shortType }}</span>
+        <span class="meta-chip">{{ formatDateTime(info.createdAt) }}</span>
+        <span v-if="info.expiresAt" class="meta-chip meta-chip--warn">
+          {{ formatDateTime(info.expiresAt) }} 到期
+        </span>
       </div>
+
       <div class="security-hint" :class="{ encrypted: isEncrypted }">
-        <t-icon :name="isEncrypted ? 'lock-on' : 'link'" />
-        <span>{{ isEncrypted ? '加密分享链接' : '公开分享链接' }}</span>
+        <span class="dot" aria-hidden="true"></span>
+        <span>{{ isEncrypted ? '加密分享 · 需密码访问' : '公开分享链接' }}</span>
       </div>
+
       <div class="file-share-actions">
-        <button v-if="previewKind" type="button" class="preview-btn" @click="openPreview">
-          <t-icon name="browse" />
-          <span>在线预览</span>
-        </button>
         <button type="button" class="download-btn" :disabled="downloading" @click="handleDownload">
           <t-icon name="download" />
           <span>{{ downloading ? '下载中...' : '下载文件' }}</span>
         </button>
+        <button v-if="previewKind" type="button" class="preview-btn" @click="openPreview">
+          <t-icon name="browse" />
+          <span>在线预览</span>
+        </button>
       </div>
+
+      <p class="share-foot">
+        由 <strong>{{ siteTitle }}</strong> 分享 · 请确认来源可信后再下载
+      </p>
     </div>
   </div>
 </template>
@@ -50,6 +56,7 @@ import { computed, ref } from 'vue';
 import MessagePlugin from '@/utils/message';
 import { triggerBrowserDownload, LARGE_FILE_DOWNLOAD_TIP, isLargeFile } from '@/utils/download';
 import { getPreviewKind, buildSharePreviewUrl, buildShareThumbnailUrl } from '@/utils/preview';
+import { usePublicConfigStore } from '../../stores/public-config';
 import ThumbnailImg from '@/components/ThumbnailImg.vue';
 import { useMediaPlaybackStore } from '../../stores/mediaPlayback';
 
@@ -70,6 +77,13 @@ const props = defineProps<{
 }>();
 
 const isEncrypted = computed(() => !!props.encrypted);
+const siteTitle = computed(() => usePublicConfigStore().siteTitle);
+/** 短类型：优先扩展名，回退 MIME 子类型，避免长 MIME 撑破 chip */
+const shortType = computed(() => {
+  const ext = props.info.name.includes('.') ? props.info.name.split('.').pop() : '';
+  if (ext && ext.length <= 5) return ext.toUpperCase();
+  return (props.info.mimeType.split('/')[1] ?? props.info.mimeType).toUpperCase();
+});
 const previewKind = computed(() => getPreviewKind(props.info.mimeType, props.info.name));
 const mediaPlaybackStore = useMediaPlaybackStore();
 
@@ -146,107 +160,135 @@ function handleDownload() {
   box-shadow: var(--shadow-lg);
   color: var(--text-primary);
   font-family: var(--font-body);
-  transition: border-color var(--duration-fast), box-shadow var(--duration-fast);
 }
 
-.file-share-card:hover {
-  border-color: var(--border-strong);
-}
-
-/* 预览大区：顶部极光渐变 + 居中放大缩略图 */
+/* 预览大区：品牌色柔光 + 居中文件标识 */
 .file-share-hero {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 56px 24px;
-  background:
-    radial-gradient(120% 100% at 50% 0%, color-mix(in srgb, var(--seed-primary) 16%, transparent), transparent 62%),
-    var(--color-bg);
+  padding: 40px 24px 32px;
+  background: var(--color-bg-surface);
+  border-bottom: 1px solid var(--border-default);
+  overflow: hidden;
+}
+.hero-glow {
+  position: absolute;
+  inset: -40% -10% auto;
+  height: 220px;
+  background: radial-gradient(60% 60% at 50% 40%,
+    color-mix(in srgb, var(--seed-primary) 14%, transparent),
+    transparent 70%);
+  pointer-events: none;
 }
 
-/* 内容区 */
 .file-share-body {
-  padding: 28px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
 .file-name {
   margin: 0;
   overflow: hidden;
   color: var(--text-primary);
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 600;
-  line-height: 1.35;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
   word-break: break-all;
 }
 
+/* 元信息：chip 组，比「·」串联更易扫读 */
 .file-share-meta {
   display: flex;
   flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  color: var(--text-secondary);
-  font-size: 13px;
-  line-height: 1.5;
+  gap: 8px;
 }
-.meta-separator { color: var(--text-tertiary); }
-.mime-type { max-width: 260px; overflow: hidden; font-family: var(--font-mono); text-overflow: ellipsis; white-space: nowrap; }
-.expiry { color: var(--color-warning); }
+.meta-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.meta-chip--warn { color: var(--color-warning); }
 
 .security-hint {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--color-success) 12%, transparent);
-  color: var(--color-success);
+  gap: 7px;
+  color: var(--text-tertiary);
   font-size: 12px;
 }
-.security-hint.encrypted {
-  background: color-mix(in srgb, var(--seed-primary) 16%, transparent);
-  color: var(--seed-accent);
+.security-hint .dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
 }
+.security-hint.encrypted .dot { background: var(--primary); }
 
 .file-share-actions {
   display: flex;
-  gap: 12px;
-  margin-top: 4px;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 2px;
 }
 .file-share-actions button {
   display: inline-flex;
-  flex: 1;
-  min-height: 48px;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  padding: 12px 16px;
+  min-height: 44px;
+  padding: 11px 16px;
   border-radius: var(--radius-md);
   font: inherit;
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background var(--duration-fast), border-color var(--duration-fast), color var(--duration-fast);
+  transition: background var(--duration-fast) var(--ease-out-expo),
+              border-color var(--duration-fast) var(--ease-out-expo);
 }
-.preview-btn {
-  color: var(--seed-primary);
-  background: transparent;
-  border: 1px solid var(--border-strong);
+.download-btn {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border: 1px solid var(--primary);
 }
-.preview-btn:hover { background: var(--color-accent-soft); border-color: var(--seed-primary); }
-.download-btn { color: #fff; background: var(--seed-primary); border: 1px solid var(--seed-primary); }
-.download-btn:hover { background: color-mix(in srgb, var(--seed-primary) 85%, #fff); }
+.download-btn:hover { background: color-mix(in srgb, var(--primary) 88%, var(--foreground)); }
 .download-btn:disabled { cursor: not-allowed; opacity: .6; }
 
+.preview-btn {
+  color: var(--text-secondary);
+  background: transparent;
+  border: 1px solid var(--border-default);
+}
+.preview-btn:hover { background: var(--accent); color: var(--accent-foreground); border-color: transparent; }
+
+/* 页脚：品牌归属 + 安全提示 */
+.share-foot {
+  margin: 2px 0 0;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.share-foot strong { color: var(--text-secondary); font-weight: 600; }
+
 @media (max-width: 480px) {
-  .file-share-hero { padding: 24px 16px; }
-  .file-share-hero :deep(img) { max-width: 112px; max-height: 112px; }
-  .file-share-body { padding: 16px; gap: 8px; }
-  .file-name { font-size: 18px; }
-  .file-share-actions { flex-direction: column; }
-  .mime-type { max-width: 160px; }
+  .file-share-hero { padding: 28px 16px 24px; }
+  .file-share-hero :deep(img) { max-width: 96px; max-height: 96px; }
+  .file-share-body { padding: 18px; gap: 12px; }
+  .file-name { font-size: 17px; }
+  .meta-chip { max-width: 150px; }
 }
 </style>
