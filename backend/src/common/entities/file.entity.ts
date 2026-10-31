@@ -83,6 +83,15 @@ export class File {
   @Column({ type: 'varchar', length: 1024, nullable: true, comment: 'S3 对象 key' })
   storageKey: string | null;
 
+  /**
+   * 内容 sha256（十六进制）。
+   *
+   * 用途：同一用户重复上传相同内容时复用已有 Telegram `file_id`，避免重复上行。
+   * 为空表示未知（存量文件、未开启去重或计算失败），不参与去重。
+   */
+  @Column({ type: 'varchar', length: 64, nullable: true, comment: '内容 sha256，用于上传去重' })
+  contentHash: string | null;
+
   /** 本地缩略图路径（相对于 THUMBNAIL_DIR，如 {id}.webp） */
   @Column({ type: 'varchar', length: 512, nullable: true, default: null })
   thumbnailPath: string | null;

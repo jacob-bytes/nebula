@@ -61,6 +61,7 @@ import { isSafePublicInlineContentType } from '../common/utils/preview-content-t
 import { buildFileVersionETag, matchesIfRange } from '../common/utils/file-range-validator';
 import { QuotaService } from '../quota/quota.service';
 import { StorageService } from '../storage/storage.service';
+import { ContentDedupeService } from './content-dedupe.service';
 import { parseByteRange } from '../common/utils/byte-range';
 import {
   RangeNotSatisfiableException,
@@ -192,6 +193,10 @@ export class FileService implements OnModuleInit {
     // 单元测试的直接构造；运行时由 FileModule → StorageModule 注入。
     @Optional() @Inject(StorageService)
     private readonly storage: StorageService | null = null,
+    // 上传内容去重（同用户同内容复用 file_id）。@Optional 同样为兼容单元测试；
+    // 运行时由 FileModule 注入，缺失时跳过去重（等价于改造前行为）。
+    @Optional() @Inject(ContentDedupeService)
+    private readonly contentDedupe: ContentDedupeService | null = null,
   ) {
   }
 
@@ -1208,15 +1213,45 @@ export class FileService implements OnModuleInit {
       return this.uploadToObjectStorage(file, user, originalName, uploadName, directProvider, tagIds);
     }
 
-    const useStream = file.path && fs.existsSync(file.path);
-    const telegramFile = await this.uploadTelegramObject({
-      filename: uploadName,
-      // 池化路径需要确定长度；磁盘与内存两种 multer 存储都能给出 file.size
-      pooledLength: file.size,
-      openPoolStream: () => (useStream ? createReadStream(file.path) : Readable.from([file.buffer])),
-      openLegacySource: () => (useStream ? createReadStream(file.path) : file.buffer),
-      legacyKnownLength: useStream ? file.size : undefined,
-    });
+    const useStream = Boolean(file.path) && fs.existsSync(file.path!);
+
+    // 内容去重：先算摘要，再查同一用户是否已有相同内容的 ready 记录。
+    // 命中则不向 Telegram 发送任何字节，直接复用远端引用（省掉整段上行）。
+    const contentHash = await this.contentDedupe?.hashSource({
+      path: useStream ? file.path : undefined,
+      buffer: useStream ? undefined : file.buffer,
+    }) ?? null;
+    const reusable = contentHash && this.contentDedupe
+      ? await this.contentDedupe.findReusable({
+        uploaderId: user.id,
+        contentHash,
+        size: file.size,
+      })
+      : null;
+
+    const telegramFile: UploadedTelegramFile = reusable
+      ? {
+        file_id: reusable.fileId,
+        file_path: reusable.filePath,
+        message_id: reusable.messageId,
+        chat_id: reusable.chatId,
+        file_unique_id: reusable.fileUniqueId,
+        accountId: reusable.sourceAccountId,
+      }
+      : await this.uploadTelegramObject({
+        filename: uploadName,
+        // 池化路径需要确定长度；磁盘与内存两种 multer 存储都能给出 file.size
+        pooledLength: file.size,
+        openPoolStream: () => (useStream ? createReadStream(file.path!) : Readable.from([file.buffer])),
+        openLegacySource: () => (useStream ? createReadStream(file.path!) : file.buffer),
+        legacyKnownLength: useStream ? file.size : undefined,
+      });
+
+    if (reusable) {
+      this.logger.log(
+        `上传去重命中：file=${reusable.matchedFileId} 复用远端引用，跳过 Telegram 上行（size=${file.size}）`,
+      );
+    }
 
     const newFile = this.fileRepository.create({
       filename: telegramFile.file_id,
@@ -1225,6 +1260,11 @@ export class FileService implements OnModuleInit {
       size: file.size,
       telegramFileId: telegramFile.file_id,
       telegramFilePath: telegramFile.file_path || '',
+      telegramMessageId: telegramFile.message_id ?? null,
+      telegramChatId: telegramFile.chat_id ?? null,
+      telegramFileUniqueId: telegramFile.file_unique_id ?? null,
+      telegramSourceAccountId: telegramFile.accountId ?? null,
+      contentHash,
       uploaderId: user.id,
       accessType: FileAccessType.PUBLIC,
       maxAccessCount: this.accessCountDefault,

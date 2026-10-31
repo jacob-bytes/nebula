@@ -6,6 +6,7 @@ import { Job } from 'bull';
 import { QUEUE_NAMES } from './bull-queue.module';
 import { File } from '../common/entities/file.entity';
 import { TelegramService } from '../telegram/telegram.service';
+import { ContentDedupeService } from '../file/content-dedupe.service';
 import { FileService } from '../file/file.service';
 import { UploadDiskBudgetService } from '../file/upload-disk-budget.service';
 import { AccountAwareUploadService, AccountUploadUnavailableError } from '../telegram-account-pool/account-aware-upload.service';
@@ -59,6 +60,11 @@ export class FileUploadProcessor {
      * `local_cache_released` / `releaseLocalFile` 语义，池化客户端不提供该契约。
      */
     @Optional() private readonly accountUpload?: AccountAwareUploadService,
+    /**
+     * 内容去重（可选依赖）：命中时跳过 Telegram 上行并复用远端引用。
+     * 未装配（单元测试直接构造）时完全退回改造前行为。
+     */
+    @Optional() private readonly contentDedupe?: ContentDedupeService,
   ) {}
 
   private async removeTempFile(filePath: string): Promise<boolean> {
@@ -249,6 +255,37 @@ export class FileUploadProcessor {
 
       try {
         let result = await this.loadReceipt(filePath, uploadVersion);
+
+        // 内容去重：队列上传（异步 / 批量 / 分片合并）在真正上行前先查同内容记录。
+        // 命中则复用远端引用，整段 Telegram 上行被省掉；回执照常落盘，
+        // 使重试与重启恢复走同一条 O(1) 路径。
+        if (!result && this.contentDedupe?.isEnabled()) {
+          const contentHash = await this.contentDedupe.hashSource({ path: filePath });
+          if (contentHash) {
+            await this.contentDedupe.rememberHash(fileId, contentHash);
+            const reusable = await this.contentDedupe.findReusable({
+              uploaderId: file.uploaderId,
+              contentHash,
+              size: file.size,
+              excludeFileId: fileId,
+            });
+            if (reusable) {
+              this.logger.log(
+                `上传去重命中：file=${fileId} 复用 ${reusable.matchedFileId} 的远端引用，跳过 Telegram 上行`,
+              );
+              result = {
+                file_id: reusable.fileId,
+                file_path: reusable.filePath,
+                message_id: reusable.messageId,
+                chat_id: reusable.chatId,
+                file_unique_id: reusable.fileUniqueId,
+                sourceAccountId: reusable.sourceAccountId,
+              } as UploadReceipt;
+              await this.persistReceipt(filePath, { ...result, strictDiskLease }, uploadVersion);
+            }
+          }
+        }
+
         if (!result) {
           // 池化优先（仅非严格任务）：按权重/健康/容量选号上传，并记录**实际上传账号**；
           // 严格任务保留单账号链路，以维持 noCache/localCacheReleased/releaseLocalFile 契约。

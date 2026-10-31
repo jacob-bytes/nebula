@@ -91,6 +91,8 @@ describe('真实 SQLite 数据源关键业务与并发 QA', () => {
       'SqliteAddUserStorageQuota1804000000000',
       // v0.1.0：存储抽象（files.storageProvider / storageKey，可空 = 走 Telegram）
       'SqliteAddFileStorageLocator1804100000000',
+      // v0.5.0：上传内容去重（files.contentHash + uploader 索引）
+      'SqliteAddFileContentHash1804200000000',
     ]);
 
     await dataSource.undoLastMigration();

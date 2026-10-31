@@ -41,6 +41,7 @@ import { TelegramAccountPoolModule } from '../telegram-account-pool/telegram-acc
 import { TelegramMirrorModule } from '../telegram-mirror/telegram-mirror.module';
 import { QuotaModule } from '../quota/quota.module';
 import { StorageModule } from '../storage/storage.module';
+import { ContentDedupeService } from './content-dedupe.service';
 
 @Module({
   imports: [
@@ -84,6 +85,7 @@ import { StorageModule } from '../storage/storage.module';
     ThumbnailCryptoService,
     UploadJobService,
     UploadDiskBudgetService,
+    ContentDedupeService,
     ChunkUploadService,
     ChunkUploadResourceInterceptor,
     StrictUploadModeGuard,
@@ -96,6 +98,6 @@ import { StorageModule } from '../storage/storage.module';
     PublicMediaAdmissionService,
   ],
   // FileCacheService 供 Bot 直链匿名下载复用（同一实例，保证会话/缓存目录唯一）
-  exports: [FileService, UploadDiskBudgetService, FileCacheService, DownloadResourceCoordinatorService],
+  exports: [FileService, UploadDiskBudgetService, FileCacheService, DownloadResourceCoordinatorService, ContentDedupeService],
 })
 export class FileModule {}

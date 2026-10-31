@@ -6,6 +6,35 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.5.0] - 2026-10-31
+
+针对 Telegram 的核心优化：上传内容去重，省掉重复上行带宽。
+
+### 新增
+
+- `ContentDedupeService`：按内容 sha256 判断同一用户是否已有相同文件，
+  命中时复用其 Telegram `file_id` / `message_id` / 来源账号，**不发送任何上行字节**。
+- 两条上传路径均已接入：同步单文件上传（类型校验后计算摘要）与队列上传
+  （异步 / 批量 / 分片合并，在 processor 真正上行前计算）。
+- `files.contentHash` + `idx_files_uploader_hash` 索引（迁移 `1804200000000`，PG/SQLite）。
+- `UPLOAD_DEDUPE_ENABLED` 开关（默认开启，关闭后退回改造前行为）。
+
+### 设计取舍
+
+- 只复用 `status='ready'`、未删除、`telegramFileId` 非空且有相同 `size` 的记录；
+  命中方沿用来源账号字段（`file_id` 与 Bot 账号绑定，禁止跨账号复用）。
+- **只在同一 uploaderId 内复用**：跨用户去重能省更多，但会让「A 上传后 B 立即命中」
+  成为可观测侧信道，且配额/删除语义需要先设计，因此不做。
+- 共享 Telegram 对象与既有「删除文件不删远端对象」的设计一致；
+  配额仍按逻辑记录计量。
+
+### 变更
+
+- 同步上传落库时补写 `telegramMessageId` / `telegramChatId` /
+  `telegramFileUniqueId` / `telegramSourceAccountId`（此前只有队列路径会写），
+  使去重复用与后续镜像/副本判断都有完整锚点。
+- 版本号 `0.5.0`。
+
 ## [0.4.0] - 2026-10-31
 
 配额支持批量运营。
