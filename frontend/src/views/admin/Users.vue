@@ -25,6 +25,10 @@
         <template #lastLoginAt="{ row }">
           {{ row.lastLoginAt ? formatDate(row.lastLoginAt) : '从未登录' }}
         </template>
+        <!-- 没有该 slot 时 TDesign 直接渲染原始值，会显示成 2026-10-31T16:20:54.000Z -->
+        <template #createdAt="{ row }">
+          {{ formatDate(row.createdAt) }}
+        </template>
         <template #operations="{ row }">
           <t-button
             v-if="row.role !== 'super_admin' && !isSelf(row.id)"

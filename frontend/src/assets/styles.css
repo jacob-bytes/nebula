@@ -9,7 +9,7 @@
    切换主题仅修改这 6 个种子值，组件样式零改动。
    ============================================================ */
 :root {
-  --seed-bg: #F2F3F3;
+  --seed-bg: #FFFFFF;
   --seed-fg: #16191F;
   --seed-primary: #0972D3;
   --seed-accent: #033160;
@@ -18,7 +18,9 @@
 
   /* --- Derived: Backgrounds --- */
   --color-bg: var(--seed-bg);
-  --color-bg-elevated: color-mix(in srgb, var(--seed-bg) 60%, var(--seed-surface));
+  /* 页面与卡片同为白色时，层级改由「浅灰面 + 边框 + 阴影」承担：
+     elevated 是白底上的一层浅灰（侧栏、表头、输入框hover）。 */
+  --color-bg-elevated: color-mix(in srgb, var(--seed-fg) 4%, var(--seed-bg));
   --color-bg-surface: var(--seed-surface);
   --color-bg-overlay: color-mix(in srgb, var(--seed-surface) 96%, var(--seed-fg));
   --color-bg-hover: color-mix(in srgb, var(--seed-primary) 6%, var(--seed-surface));
@@ -49,14 +51,15 @@
   --text-placeholder: color-mix(in srgb, var(--seed-fg) 35%, var(--seed-bg));
 
   /* --- Derived: Borders --- */
-  --border-default: color-mix(in srgb, var(--seed-fg) 12%, var(--seed-bg));
+  --border-default: color-mix(in srgb, var(--seed-fg) 16%, var(--seed-bg));
   --border-strong: color-mix(in srgb, var(--seed-fg) 22%, var(--seed-bg));
   --border-accent: color-mix(in srgb, var(--seed-primary) 35%, transparent);
 
   /* --- Derived: Shadows --- */
-  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--seed-fg) 6%, transparent);
-  --shadow-md: 0 2px 8px color-mix(in srgb, var(--seed-fg) 10%, transparent);
-  --shadow-lg: 0 8px 24px color-mix(in srgb, var(--seed-fg) 14%, transparent);
+  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--seed-fg) 7%, transparent),
+               0 1px 3px color-mix(in srgb, var(--seed-fg) 5%, transparent);
+  --shadow-md: 0 4px 12px color-mix(in srgb, var(--seed-fg) 9%, transparent);
+  --shadow-lg: 0 12px 32px color-mix(in srgb, var(--seed-fg) 13%, transparent);
   --shadow-glow: none;
 
   /* --- Typography (system fonts — no external requests, LCP safe) --- */
@@ -64,11 +67,14 @@
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
 
-  /* --- Radii (Cloudscape: sharp geometry) --- */
-  --radius-sm: var(--seed-radius);
-  --radius-md: calc(var(--seed-radius) * 2);
-  --radius-lg: calc(var(--seed-radius) * 3);
-  --radius-xl: calc(var(--seed-radius) * 4);
+  /* --- Radii ---
+     由 4px 的锐利几何改为柔和几何：6 / 10 / 14 / 20。
+     种子仍是 4px，但派生改为「+2/+6/+10/+16」，
+     避免原来 ×2/×3/×4 把 md 直接顶到 16px、lg 到 24px 的过度圆角。 */
+  --radius-sm: calc(var(--seed-radius) + 2px);
+  --radius-md: calc(var(--seed-radius) + 6px);
+  --radius-lg: calc(var(--seed-radius) + 10px);
+  --radius-xl: calc(var(--seed-radius) + 16px);
 
   /* --- Transitions --- */
   --ease-out-expo: cubic-bezier(0.2, 0, 0, 1);
@@ -107,11 +113,15 @@
    2. DARK THEME — patches only seed tokens + semantic overrides
    ============================================================ */
 [data-theme="dark"] {
-  --seed-bg: #16191F;
+  --seed-bg: #0F131A;
   --seed-fg: #E8EDF5;
   --seed-primary: #539FE5;
   --seed-accent: #7DBBEE;
-  --seed-surface: #1F242B;
+  --seed-surface: #222834;
+
+  /* 暗色下卡片靠"面差 + 边框"识别：面差 ~1.29:1、边框 ~1.69:1。
+     纯靠边框（1.3:1）在深色里几乎不可见，故同时提高面差。 */
+  --border-default: color-mix(in srgb, var(--seed-fg) 18%, var(--seed-surface));
 
   --color-success: #53D769;
   --color-success-soft: color-mix(in srgb, #53D769 12%, var(--seed-surface));
@@ -349,8 +359,9 @@ body {
    6. CARDS & STATS
    ============================================================ */
 .card {
-  background: var(--color-bg-surface); border-radius: var(--radius-md);
+  background: var(--color-bg-surface); border-radius: var(--radius-lg);
   padding: 20px; border: 1px solid var(--border-default); margin-bottom: 16px;
+  box-shadow: var(--shadow-sm);
   transition: border-color var(--duration-normal) var(--ease-out-expo),
               box-shadow var(--duration-normal) var(--ease-out-expo);
 }
@@ -364,7 +375,8 @@ body {
 }
 
 .stat-card {
-  background: var(--color-bg-surface); border-radius: var(--radius-md);
+  background: var(--color-bg-surface); border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
   padding: 18px 16px; border: 1px solid var(--border-default);
   transition: border-color var(--duration-normal) var(--ease-out-expo),
               box-shadow var(--duration-normal) var(--ease-out-expo);
@@ -388,7 +400,7 @@ body {
    7. UPLOAD ZONE
    ============================================================ */
 .upload-zone {
-  border: 2px dashed var(--border-strong); border-radius: var(--radius-md);
+  border: 2px dashed var(--border-strong); border-radius: var(--radius-lg);
   padding: 48px 40px; text-align: center;
   transition: border-color var(--duration-normal) var(--ease-out-expo),
               background var(--duration-normal) var(--ease-out-expo);
@@ -750,7 +762,8 @@ html .t-button {
 
 /* --- Table --- */
 html .t-table {
-  border-radius: var(--radius-md);
+  /* 与卡片同圆角，避免卡片 14px / 表格 10px 的错位 */
+  border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--border-default);
 }
@@ -759,13 +772,14 @@ html .t-table thead th {
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
-  padding: 10px 16px;
+  /* 后台表格密度：表头 8px、行 10px，配合 14px 字号，一屏可多显示 2–3 行 */
+  padding: 8px 14px;
   border-bottom: 1px solid var(--border-strong);
   background-color: var(--color-bg-elevated);
 }
 
 html .t-table tbody td {
-  padding: 12px 16px;
+  padding: 10px 14px;
   border-bottom: 1px solid var(--border-default);
   font-size: 14px;
   vertical-align: middle;
