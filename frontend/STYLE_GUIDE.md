@@ -23,13 +23,13 @@
 |------|-------|------|------|
 | `--seed-bg` | `#FFFFFF` | `#09090B` | 页面背景（zinc-950） |
 | `--seed-fg` | `#09090B` | `#FAFAFA` | 主文本（zinc-950 / zinc-50） |
-| `--seed-primary` | `#4F46E5` | `#818CF8` | 主操作色（indigo-600 / 400） |
-| `--seed-accent` | `#3730A3` | `#A5B4FC` | 强调/悬停（indigo-800 / 300） |
+| `--seed-primary` | `#1E40AF` | `#60A5FA` | 主操作色（blue-800 / blue-400） |
+| `--seed-accent` | `#1E3A8A` | `#93C5FD` | 强调/悬停（blue-900 / blue-300） |
 | `--seed-surface` | `#FFFFFF` | `#18181B` | 容器表面（zinc-900） |
 | `--seed-radius` | `10px` | `10px` | 基础圆角（shadcn 0.625rem） |
 
-> 暗色下主色用 indigo-400 而非 500：indigo-500 在 zinc-900 上只有 3.97:1，
-> 正文不达 AA；提亮到 400 后 6.3:1，按钮前景改用 `#09090B`（8.9:1）。
+> 亮色主色按「更蓝更深」定在 blue-800（白底 8.72:1），hover 用 blue-900 加深。
+> 暗色用 blue-400（zinc-900 上 6.97:1），按钮前景用近黑 `#09090B`（7.83:1）。
 
 ### 2.1.1 shadcn 语义别名（新增代码优先使用）
 

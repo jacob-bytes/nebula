@@ -17,8 +17,8 @@
      ---------------------------------------------------------- */
   --seed-bg: #FFFFFF;
   --seed-fg: #09090B;        /* zinc-950 */
-  --seed-primary: #4F46E5;   /* indigo-600 */
-  --seed-accent: #3730A3;    /* indigo-800 */
+  --seed-primary: #1E40AF;   /* blue-800：比 indigo 更蓝更深，白底 8.72:1 */
+  --seed-accent: #1E3A8A;    /* blue-900：hover/active 加深 */
   --seed-surface: #FFFFFF;
   --seed-radius: 10px;
 
@@ -114,8 +114,8 @@
   --seed-fg: #FAFAFA;        /* zinc-50 */
   /* indigo-400：indigo-500 在 zinc-900 上只有 3.97:1，正文不达标；
      提亮到 400 后 6.3:1，同时按钮前景改用近黑（8.9:1）。 */
-  --seed-primary: #818CF8;
-  --seed-accent: #A5B4FC;    /* indigo-300 */
+  --seed-primary: #60A5FA;   /* blue-400：zinc-900 上 6.97:1 */
+  --seed-accent: #93C5FD;    /* blue-300 */
   --seed-surface: #18181B;   /* zinc-900 */
 
   --primary-foreground: #09090B;
@@ -1186,3 +1186,114 @@ html .t-button:not(.t-button--disabled):not(:disabled):active {
   transition: background var(--duration-fast) var(--ease-out-expo);
 }
 .sidebar-logout-compact:hover { background: var(--color-danger-soft); }
+
+/* ============================================================
+   18. shadcn 控件层
+   目标：把 TDesign 的默认控件换成 shadcn 的尺寸与状态语言
+   ——36px 高、8px 圆角、focus 用 ring 扩散、面板用大圆角 + 轻阴影。
+   ============================================================ */
+
+/* --- 18.1 尺寸与圆角：走 TDesign 自己的组件尺寸变量，避免直接写死高度 --- */
+html {
+  --td-comp-size-s: 30px;
+  --td-comp-size-m: 36px;
+  --td-comp-size-l: 40px;
+  --td-radius-default: var(--radius-md);
+  --td-radius-medium: var(--radius-lg);
+}
+
+html .t-button {
+  height: 36px;
+  padding: 0 16px;
+  font-size: 14px;
+  border-radius: var(--radius-md);
+  font-weight: 500;
+}
+html .t-button--size-small { height: 30px; padding: 0 12px; font-size: 13px; }
+html .t-button--size-large { height: 40px; padding: 0 20px; font-size: 15px; }
+html .t-button--variant-base,
+html .t-button--variant-outline {
+  border-radius: var(--radius-md);
+}
+
+/* --- 18.2 主按钮：纯色 + 加深 hover（shadcn 不做渐变） --- */
+html .t-button--theme-primary.t-button--variant-base {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+html .t-button--theme-primary.t-button--variant-base:hover {
+  background: color-mix(in srgb, var(--primary) 88%, var(--foreground));
+}
+html .t-button--theme-primary.t-button--variant-base:active {
+  background: color-mix(in srgb, var(--primary) 80%, var(--foreground));
+}
+
+/* --- 18.3 输入框：边框 + focus 扩散环（shadcn 的 ring 语义） --- */
+html .t-input,
+html .t-textarea__inner,
+html .t-select-input {
+  border-radius: var(--radius-md);
+  border-color: var(--input);
+  font-size: 14px;
+}
+html .t-input:hover,
+html .t-textarea__inner:hover {
+  border-color: var(--border-strong);
+}
+html .t-input:focus-within,
+html .t-input.t-is-focused,
+html .t-textarea__inner:focus,
+html .t-select-input:focus-within {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--ring) 28%, transparent);
+}
+
+/* --- 18.4 浮层：大圆角 + 轻阴影 --- */
+html .t-dialog {
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+}
+html .t-dialog__header { font-size: 16px; font-weight: 600; }
+html .t-popup__content {
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-md);
+}
+html .t-tag { border-radius: var(--radius-sm); font-weight: 500; }
+
+/* --- 18.5 表格扁平化：去外框，只留行分隔线 --- */
+html .t-table {
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+}
+html .t-table thead th {
+  background: transparent;
+  border-bottom: 1px solid var(--border);
+  color: var(--muted-foreground);
+  font-weight: 500;
+  font-size: 13px;
+  padding: 10px 14px;
+}
+html .t-table tbody td {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 14px;
+}
+html .t-table tbody tr:last-child td { border-bottom: none; }
+
+/* --- 18.6 outline 按钮：shadcn 的透明底 + hover 用 accent ----------------
+   TDesign 的 outline 变体自带不透明底色，暗色下会渲染成白块
+   （实测 background 计算值 rgb(255,255,255)，与 --td-bg-color-container 无关）。
+   这里统一改为透明，hover 时才出现 accent 背景。 */
+html .t-button--variant-outline,
+html .t-button--variant-dashed {
+  background-color: transparent;
+}
+html .t-button--variant-outline:hover,
+html .t-button--variant-dashed:hover {
+  background-color: var(--accent);
+}
+html[data-theme="dark"] .t-button--variant-outline:hover,
+html[data-theme="dark"] .t-button--variant-dashed:hover {
+  background-color: var(--accent);
+}

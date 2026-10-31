@@ -6,6 +6,30 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.10.0] - 2026-11-01
+
+主色转深蓝，控件层按 shadcn 的尺寸与状态语言重绘。
+
+### 变更
+
+- **主色更蓝更深**：indigo-600 `#4F46E5` → blue-800 `#1E40AF`（白底 8.72:1），
+  hover/active 用 blue-900 `#1E3A8A` 继续加深；暗色 `#60A5FA`（zinc-900 上 6.97:1）。
+- **控件尺寸对齐 shadcn**：按钮/输入框 36px 高、字号 14px、圆角 8px
+  （通过 `--td-comp-size-s/m/l` 与 `--td-radius-*` 统一注入，避免逐组件写死高度）。
+- **输入框 focus 改为 ring 扩散**：边框转 `--ring` + 3px 半透明外环，
+  替代原来只变边框色的做法。
+- **浮层**：Dialog 用 `--radius-xl` + `shadow-lg`，Popup 用 `--radius-lg` + 1px 边框。
+- **表格扁平化**：去掉外框与圆角，表头透明 + 底部 1px 分隔线，
+  行高 12px / 字号 13–14px，更接近 shadcn 的 Table。
+- **outline 按钮修正**：TDesign 的 outline 变体自带不透明底色，暗色下渲染成白块
+  （实测 background 计算值为 `rgb(255,255,255)`，与 `--td-bg-color-container` 无关）。
+  统一改为透明底，hover 时用 `--accent`。
+
+### 验证
+
+- `vue-tsc` 与 `vite build` 通过；vitest 392 项全部通过。
+- 浅色/暗色截图复核：主色深度、控件高度、表格分隔线、outline 按钮底色均正常。
+
 ## [0.9.0] - 2026-11-01
 
 视觉体系迁移到 shadcn/ui 语义 token + indigo 主色。
