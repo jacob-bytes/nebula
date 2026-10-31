@@ -6,6 +6,30 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.15.1] - 2026-11-01
+
+README 重写：补齐从零部署路径。
+
+### 文档
+
+- 新增「快速开始（Docker Compose）」：四项必填变量、首个管理员如何产生
+  （`users` 表为空时注册即 super_admin，此后默认关闭注册）、部署验证命令。
+- 新增「其他部署方式」：裸机（构建 → 迁移 → 启动）与本地开发（Vite 代理说明）。
+- 新增「必填配置与四个常见坑」：`APP_HOST` 默认 127.0.0.1、HTTPS 下
+  `SECURE_COOKIE`/`TRUST_PROXY_HOPS`、裸机需手动迁移、磁盘按并发预留。
+- 新增「Telegram 侧准备」：Bot Token、私有群/频道与 `chat_id`、20MB 上限与自建
+  本地 Bot API 的取舍（含 workdir 必须持久化）。
+- 新增「排障速查」表：启动校验失败、登录态丢失、上传权限、大文件、workdir 删除、
+  SQLite `file_tags`（v0.8.1 前）、磁盘写满。
+- 文档表补齐 docker/storage 两项；核心能力补充「上传去重」「存储配额」。
+
+### 说明
+
+- 所有相对链接已脚本校验无失效；必填项与 `docker/env.example`、
+  `docker-compose.yml` 的变量插值逐项核对。
+- 容器镜像未在本机构建验证（环境无 Docker），Docker 路径按仓库内既有 compose
+  与 entrypoint 行为描述。
+
 ## [0.15.0] - 2026-11-01
 
 新增可交互的设计规范页，把前几轮的视觉约定固化下来。
