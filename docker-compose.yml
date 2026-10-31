@@ -1,0 +1,105 @@
+# 星云盘（nebula）—— 单机 Docker Compose 部署
+#
+#   cp docker/env.example .env    # 填入 JWT_SECRET 等必填项
+#   docker compose up -d --build
+#
+# 说明：
+# - 应用镜像内置前端产物，由 NestJS 直接托管，因此不需要额外的 nginx 容器。
+# - 数据库迁移由容器 entrypoint 在启动前执行（RUN_MIGRATIONS_ON_START）。
+# - 需要 HTTPS/反向代理时，在宿主机前置 Caddy/nginx 并转发到 127.0.0.1:3000；
+#   此时应把 CORS_ORIGINS 设为实际对外域名。
+
+name: nebula
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-nebula}
+      POSTGRES_USER: ${POSTGRES_USER:-nebula}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?必须在 .env 中设置 POSTGRES_PASSWORD}
+      # 中文排序与大小写比较的稳定默认值；如已有全局设置可按需覆盖
+      LANG: C.UTF-8
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-nebula} -d ${POSTGRES_DB:-nebula}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      NODE_ENV: production
+      APP_HOST: 0.0.0.0
+      APP_PORT: 3000
+      # 对外站点地址：分享链接、邮件里的绝对地址都由它拼出；生产环境必填
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      # 数据库：容器内固定指向 postgres 服务
+      DB_TYPE: postgres
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USERNAME: ${POSTGRES_USER:-nebula}
+      DB_PASSWORD: ${POSTGRES_PASSWORD:?必须在 .env 中设置 POSTGRES_PASSWORD}
+      DB_DATABASE: ${POSTGRES_DB:-nebula}
+      DB_MIGRATIONS_RUN: "false"
+      # Redis（Bull 队列）
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+      REDIS_DB: 0
+      # 认证：启动校验会拒绝占位值与低熵值
+      JWT_SECRET: ${JWT_SECRET:?必须在 .env 中设置 JWT_SECRET（openssl rand -hex 32）}
+      CODE_HMAC_SECRET: ${CODE_HMAC_SECRET:-}
+      # 邮件（可选，未配置时注册/找回流程不可用）
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
+      # Telegram：文件存储后端
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      TELEGRAM_CHAT_ID: ${TELEGRAM_CHAT_ID:-}
+      # 自建 Bot API（可选）：填了就走本地实例，可突破官方 20MB 下载上限
+      TELEGRAM_API_BASE: ${TELEGRAM_API_BASE:-}
+      TELEGRAM_LOCAL_FILE_DIR: ${TELEGRAM_LOCAL_FILE_DIR:-}
+      # 日志
+      LOG_DIR: tmp/logs
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+    volumes:
+      # 下载缓存、分片临时文件与日志；删除该卷只会丢缓存，不影响对象本体
+      - appdata:/app/backend/tmp
+    ports:
+      # 仅绑定本机，公网访问请经由前置反向代理
+      - "127.0.0.1:${APP_PORT_HOST:-3000}:3000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+    # 下载大文件时容器内并发较高，按部署机内存调整
+    stop_grace_period: 30s
+
+volumes:
+  pgdata:
+  redisdata:
+  appdata:

@@ -45,6 +45,19 @@ export class User {
   @Column({ default: false })
   emailVerified: boolean;
 
+  /**
+   * 存储配额（字节）。
+   *   null → 继承全局默认 DEFAULT_USER_STORAGE_QUOTA_MB（0 表示不限）
+   *   0    → 明确不限
+   *   >0   → 该用户未删除文件的总字节上限
+   *
+   * 用量不落冗余计数列，由 QuotaService 对 files 表实时 SUM，
+   * 避免多上传路径下的增减漂移。PostgreSQL 的 bigint 会以字符串返回，
+   * 读取侧统一 Number() 收敛。
+   */
+  @Column({ type: databaseColumnType('bigint') as 'bigint', nullable: true })
+  storageQuotaBytes: string | number | null;
+
   @Column({ nullable: true })
   lastLoginIP: string;
 

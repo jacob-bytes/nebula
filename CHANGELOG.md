@@ -6,6 +6,37 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.2.0] - 2026-10-31
+
+三项产品化改造：容器化部署、用户存储配额、存储抽象（读路径）。
+
+### 新增
+
+- **Docker Compose 部署**：`Dockerfile`（前端 → 后端 → 运行时的三阶段构建，非 root 运行、
+  tini 转发信号、内置 `/api/health` 健康检查）、`docker-compose.yml`（postgres + redis + app，
+  迁移由 entrypoint 启动前执行且 fail-closed）、`docker/env.example`、`.dockerignore`、
+  `docs/deployment-docker.md`。
+- **用户存储配额**：`users.storageQuotaBytes`（NULL 继承全局默认、0 不限、>0 为字节上限）+
+  `QuotaService` 对 `files` 表实时 `SUM(size)` 汇总（不做冗余计数，避免多上传路径漂移）+
+  同步/异步/批量/分片四条上传入口拦截 + `GET /api/quota`、`GET|PUT /api/admin/users/:id/quota` +
+  个人设置页配额展示与 90% 预警 + `DEFAULT_USER_STORAGE_QUOTA_MB` 环境变量。
+- **存储抽象（读路径）**：`StorageBackend` 端口 + Telegram / S3 两个实现 +
+  `files.storageProvider` / `files.storageKey` 列 + `StorageService` 按 provider 分派。
+  S3 实现自带 SigV4 签名（以 AWS 官方 `GET Object` 示例做向量测试）与原生 Range 读取。
+- `docs/storage.md`：数据模型、接入点、配置与「单文件切到 S3」的操作步骤。
+
+### 变更
+
+- 读路径新增统一入口 `FileService.openUpstreamStream()`：`storageProvider` 为空时行为与
+  改造前逐字节一致（账号池/副本/镜像逻辑不变），仅显式 `s3` 的文件改走对象存储。
+- 版本号 `0.2.0`，`VERSION` 与前后端清单、锁文件同步。
+
+### 已知限制
+
+- 写入路径仍为 Telegram（上传选号、镜像、副本扩散与 Telegram 语义强绑定），
+  S3 目前只承担读；`docs/storage.md` 说明了原因与后续增量路径。
+- 镜像构建未在本机验证（开发机未安装 Docker），首次 `docker compose build` 需自行确认。
+
 ## [0.1.0] - 2026-10-31
 
 首个自有版本，基线为上游 TGTC v1.6.3。定位是「把上游变成可自主演进的产品底座」，

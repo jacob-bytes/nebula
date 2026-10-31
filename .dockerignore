@@ -1,0 +1,40 @@
+# 构建上下文裁剪：镜像内所有产物都由 Dockerfile 阶段自行构建，
+# 因此宿主机上的依赖、产物、缓存与历史一律不进入上下文。
+
+# 依赖与产物
+**/node_modules
+**/dist
+**/dist-migrator
+**/coverage
+**/.nyc_output
+**/*.tsbuildinfo
+
+# 运行时数据
+**/tmp
+**/logs
+**/*.log
+**/data
+**/uploads
+
+# 版本控制与本地工具缓存
+.git
+.gitignore
+.npm-cache
+.npm-logs
+.tmp-brand-test
+.github
+.vscode
+.idea
+
+# 环境文件（凭据只通过 compose 的 environment/env_file 注入）
+**/.env
+**/.env.*
+!docker/env.example
+
+# 与运行时无关的资料
+docs
+API示例脚本
+telegram-bot-api
+LICENSE
+CHANGELOG.md
+NOTICE

@@ -59,6 +59,8 @@ import { maskIdentifier } from '../telegram-accounts/telegram-account-view';
 import { FILE_DELETE_GRACE_MS, FILE_DELETE_COOLDOWN_MS, FILE_FORCE_DELETE_WAIT_MS, MS_PER_SECOND } from '../common/constants/durations';
 import { isSafePublicInlineContentType } from '../common/utils/preview-content-type';
 import { buildFileVersionETag, matchesIfRange } from '../common/utils/file-range-validator';
+import { QuotaService } from '../quota/quota.service';
+import { StorageService } from '../storage/storage.service';
 import { parseByteRange } from '../common/utils/byte-range';
 import {
   RangeNotSatisfiableException,
@@ -181,6 +183,15 @@ export class FileService implements OnModuleInit {
     // 下载期懒触发补扩散（可选依赖；镜像未启用 / 副本已达标时零行为）
     @Optional() @Inject(TelegramMirrorLazyTriggerService)
     private readonly lazyMirrorTrigger: TelegramMirrorLazyTriggerService | null = null,
+    // 存储配额：上传前按 files 实时汇总校验。@Optional 仅为兼容既有单元测试的
+    // 直接构造（测试不注册该 provider）；应用运行时由 FileModule → QuotaModule 注入，
+    // 缺失时上传不做配额拦截（跳过而非报错），并在首次跳过时记录一次告警。
+    @Optional() @Inject(QuotaService)
+    private readonly quota: QuotaService | null = null,
+    // 存储抽象：读路径按 files.storageProvider 分派。@Optional 同样只为兼容
+    // 单元测试的直接构造；运行时由 FileModule → StorageModule 注入。
+    @Optional() @Inject(StorageService)
+    private readonly storage: StorageService | null = null,
   ) {
   }
 
@@ -202,6 +213,28 @@ export class FileService implements OnModuleInit {
    * 安全：这里只做「取流」选择，绝不把 A 账号的 `file_id` 交给 B 账号——
    * 每个候选副本都带有它自己的 `file_id`（副本表事实）。
    */
+  /**
+   * 读路径统一入口：按文件的 storageProvider 分派。
+   *
+   * storageProvider 为空（全部存量文件）时与改造前完全一致地走 Telegram 账号池链路；
+   * 显式标记为 s3 的文件由对象存储后端直接取流（支持原生 Range）。
+   * StorageService 未装配（单元测试直接构造）时同样回退 Telegram 链路。
+   */
+  private async openUpstreamStream(
+    file: File,
+    expectedSize: number,
+    options?: { noCache?: boolean },
+  ): Promise<{ stream: Readable; info: { file_id: string; file_path: string; file_size: number } }> {
+    const provider = (file.storageProvider ?? '').trim();
+    if (this.storage && provider && provider !== 'telegram') {
+      return this.storage.openReadStream(file, {
+        expectedSize,
+        noCache: options?.noCache,
+      });
+    }
+    return this.openTelegramSourceStream(file, expectedSize, options);
+  }
+
   private async openTelegramSourceStream(
     file: File,
     expectedSize: number,
@@ -1005,10 +1038,32 @@ export class FileService implements OnModuleInit {
     );
   }
 
+  /** QuotaService 缺失时的告警去重标记（仅单元测试会走到该分支）。 */
+  private quotaSkipWarned = false;
+
+  /**
+   * 上传前的存储配额校验。
+   *
+   * QuotaService 由 FileModule → QuotaModule 注入；单元测试直接构造 FileService
+   * 时该依赖为空，此时跳过校验并告警一次（而不是让整条上传链路抛错）。
+   */
+  private async assertStorageQuota(userId: string, incomingBytes: number): Promise<void> {
+    if (!this.quota) {
+      if (!this.quotaSkipWarned) {
+        this.quotaSkipWarned = true;
+        this.logger.warn('QuotaService 未装配：本进程的上传不做存储配额校验。');
+      }
+      return;
+    }
+    await this.quota.assertCanUpload(userId, incomingBytes);
+  }
+
   async upload(file: Express.Multer.File, user: User, tagIds?: string[]): Promise<File> {
     if (file.size > this.uploadConfig.maxFileSizeBytes) {
       throw new BadRequestException(`文件大小不能超过 ${this.uploadConfig.maxFileSizeBytes / 1024 / 1024}MB`);
     }
+
+    await this.assertStorageQuota(user.id, file.size);
 
     const originalName = fixFilenameEncoding(file.originalname);
 
@@ -1118,6 +1173,9 @@ export class FileService implements OnModuleInit {
     if (passPreCheck.length === 0) {
       return { success: [], failed: preCheckFailed };
     }
+
+    // 配额按整批总大小校验：逐个校验会各查一次汇总，且更易出现「前面的存进去、后面的超限」
+    await this.assertStorageQuota(user.id, passPreCheck.reduce((sum, f) => sum + f.size, 0));
 
     // 上传阶段：创建处理中记录 + 入队后台上传（不再同步等待 Telegram）
     const success: File[] = [];
@@ -2046,7 +2104,7 @@ export class FileService implements OnModuleInit {
       // 否则动态跟随全局配置（默认构建缓存路径不带头，容量准备期间翻转进入无缓存早退分支则带头）。
       const forceNoCache = noCache && !this.fileCacheService.isNoCacheMode();
       const fetch = async () => {
-        const result = await this.openTelegramSourceStream(file, expectedSize, {
+        const result = await this.openUpstreamStream(file, expectedSize, {
           noCache: this.fileCacheService.isNoCacheMode() || forceNoCache,
         });
         recoveredInfo = result.info;
@@ -2216,7 +2274,7 @@ export class FileService implements OnModuleInit {
   ): Promise<Readable | null> {
     const expectedSize = Number(file.size);
     const forceNoCache = noCache && !this.fileCacheService.isNoCacheMode();
-    const fetchFn = async () => this.openTelegramSourceStream(file, expectedSize, {
+    const fetchFn = async () => this.openUpstreamStream(file, expectedSize, {
       noCache: this.fileCacheService.isNoCacheMode() || forceNoCache,
     });
     const stream = await this.fileCacheService.getOrCacheRangeStream(
@@ -2738,7 +2796,7 @@ export class FileService implements OnModuleInit {
     const { start, end } = parsed.range;
 
     const expectedSize = Number(file.size);
-    const fetchFn = () => this.openTelegramSourceStream(file, expectedSize, {
+    const fetchFn = () => this.openUpstreamStream(file, expectedSize, {
       noCache: this.fileCacheService.isNoCacheMode(),
     });
     const stream = await this.fileCacheService.getOrCacheRangeStream(file.id, expectedSize, start, end, fetchFn, {
@@ -2894,6 +2952,8 @@ export class FileService implements OnModuleInit {
       throw new BadRequestException(`文件大小不能超过 ${this.uploadConfig.maxFileSizeBytes / 1024 / 1024}MB`);
     }
 
+    await this.assertStorageQuota(user.id, file.size);
+
     const originalName = fixFilenameEncoding(file.originalname);
 
     await this.assertUploadFolder(folderId, user.id);
@@ -2931,6 +2991,9 @@ export class FileService implements OnModuleInit {
     tagIds?: string[],
     _req?: Request,
   ): Promise<{ jobId: string; total: number; warning: string }> {
+    // 异步任务与 HTTP 连接解耦后无法再把 413 传回客户端，因此必须在入队前校验配额
+    await this.assertStorageQuota(user.id, files.reduce((sum, f) => sum + f.size, 0));
+
     const job = this.uploadJobService.createJob(user, `${files.length} 个文件`, files.length);
 
     // 文件已由 Multer 完整接收后，后台任务与原 HTTP 连接解耦；
@@ -3524,7 +3587,7 @@ export class FileService implements OnModuleInit {
     // 冷资源（无正式缓存）不支持真实分片：返回 null 交由控制器回退全量预览，
     // 由 getPreviewStream → getOrCacheStream 复用同一缓存构建会话，保证单连接加载；
     // 前端在冷资源阶段钳制 seek，拖动进度条不再触发新的动态分段回源。
-    const fetchFn = () => this.openTelegramSourceStream(file, total, {
+    const fetchFn = () => this.openUpstreamStream(file, total, {
       noCache: this.fileCacheService.isNoCacheMode(),
     });
     const readStream = await this.fileCacheService.getOrCacheRangeStream(file.id, total, start, actualEnd, fetchFn, {
@@ -3605,7 +3668,7 @@ export class FileService implements OnModuleInit {
     const start = parsed.range.start;
     const end = parsed.range.end;
 
-    const fetchFn = () => this.openTelegramSourceStream(file, total, {
+    const fetchFn = () => this.openUpstreamStream(file, total, {
       noCache: this.fileCacheService.isNoCacheMode(),
     });
     const stream = await this.fileCacheService.getOrCacheRangeStream(file.id, total, start, end, fetchFn, {

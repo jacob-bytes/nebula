@@ -1,0 +1,56 @@
+import { Body, Controller, Get, Param, ParseUUIDPipe, Put, UseGuards } from '@nestjs/common';
+import { AuthGuard } from '@nestjs/passport';
+import { IsInt, IsOptional, Min } from 'class-validator';
+import { Type } from 'class-transformer';
+import { Roles } from '../common/decorators/roles.decorator';
+import { RolesGuard } from '../common/guards/roles.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { User, UserRole } from '../common/entities/user.entity';
+import { QuotaService, StorageQuotaSummary } from './quota.service';
+
+export class SetStorageQuotaDto {
+  /**
+   * 配额字节数：
+   *   null → 恢复为继承全局默认（DEFAULT_USER_STORAGE_QUOTA_MB）
+   *   0    → 明确不限
+   *   >0   → 上限
+   * 省略该字段视为「不修改」，因此这里不做必填约束。
+   */
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt({ message: 'quotaBytes 必须是整数（字节）' })
+  @Min(0, { message: 'quotaBytes 不能为负数' })
+  quotaBytes?: number | null;
+}
+
+@Controller()
+@UseGuards(AuthGuard('jwt'), RolesGuard)
+export class QuotaController {
+  constructor(private readonly quotaService: QuotaService) {}
+
+  /** 当前登录用户的配额与用量。 */
+  @Get('quota')
+  async getMyQuota(@CurrentUser() user: User): Promise<StorageQuotaSummary> {
+    return this.quotaService.getSummary(user.id);
+  }
+
+  /** 管理员查看指定用户的配额与用量。 */
+  @Get('admin/users/:id/quota')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async getUserQuota(@Param('id', ParseUUIDPipe) id: string): Promise<StorageQuotaSummary> {
+    return this.quotaService.getSummary(id);
+  }
+
+  /** 管理员设置指定用户的配额；显式传 null 恢复全局默认。 */
+  @Put('admin/users/:id/quota')
+  @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+  async setUserQuota(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetStorageQuotaDto,
+  ): Promise<StorageQuotaSummary> {
+    // `quotaBytes` 显式出现时按值处理（含 null），缺省时保持原值不变
+    const hasValue = Object.prototype.hasOwnProperty.call(dto, 'quotaBytes');
+    if (!hasValue) return this.quotaService.getSummary(id);
+    return this.quotaService.setQuota(id, dto.quotaBytes ?? null);
+  }
+}

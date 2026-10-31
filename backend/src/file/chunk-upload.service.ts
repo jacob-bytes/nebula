@@ -1,4 +1,4 @@
-import { Injectable, BadRequestException, NotFoundException, ForbiddenException, ConflictException, HttpException, HttpStatus, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, BadRequestException, NotFoundException, ForbiddenException, ConflictException, HttpException, HttpStatus, Logger, OnModuleInit, Optional, Inject } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectQueue } from '@nestjs/bull';
 import { ConfigService } from '@nestjs/config';
@@ -17,6 +17,7 @@ import {
 } from '../common/constants/durations';
 import { QUEUE_NAMES } from '../jobs/bull-queue.module';
 import { FileService } from './file.service';
+import { QuotaService } from '../quota/quota.service';
 import { UploadDiskBudgetService } from './upload-disk-budget.service';
 import { User } from '../common/entities/user.entity';
 
@@ -177,6 +178,9 @@ export class ChunkUploadService implements OnModuleInit {
     private fileUploadQueue: Queue,
     private readonly configService: ConfigService,
     private readonly uploadDiskBudget?: UploadDiskBudgetService,
+    // 存储配额：分片 init 时按声明的 fileSize 预校验，避免传完所有分片才发现超限。
+    // @Optional 兼容既有单元测试的直接构造；运行时由 FileModule → QuotaModule 注入。
+    @Optional() @Inject(QuotaService) private readonly quota: QuotaService | null = null,
   ) {
     this.baseDir = path.resolve(process.cwd(), 'tmp', 'uploads');
     this.incomingDir = path.join(this.baseDir, 'incoming');
@@ -290,6 +294,11 @@ export class ChunkUploadService implements OnModuleInit {
     }
     if (fileSize > maxFileSize) {
       throw new BadRequestException(`文件大小不能超过 ${maxFileSize / 1024 / 1024}MB`);
+    }
+
+    // 配额：分片上传在 init 阶段就按声明大小校验，避免上传 2GB 分片后才被拒绝
+    if (this.quota) {
+      await this.quota.assertCanUpload(userId, fileSize);
     }
 
     // 交叉校验：totalChunks * chunkSize 必须能容纳声明的 fileSize，且不为溢出值

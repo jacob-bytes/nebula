@@ -68,6 +68,21 @@ export class File {
   @Column({ type: 'varchar', length: 64, nullable: true, comment: '主副本所属账号 ID' })
   telegramSourceAccountId: string | null;
 
+  /**
+   * 对象内容实际所在的存储后端。
+   *
+   * 空值 = 存量数据，按 Telegram 处理（与改造前完全一致）；
+   * 'telegram' / 's3' 由 StorageService 分派读路径。
+   * 写入路径当前仍只有 Telegram 一种，故新上传的文件该列保持为空，
+   * 迁移到对象存储的文件由运维/迁移脚本显式置为 's3'。
+   */
+  @Column({ type: 'varchar', length: 32, nullable: true, comment: '存储后端：telegram / s3（空=Telegram）' })
+  storageProvider: string | null;
+
+  /** 对象存储内的 key（仅 storageProvider='s3' 时有意义） */
+  @Column({ type: 'varchar', length: 1024, nullable: true, comment: 'S3 对象 key' })
+  storageKey: string | null;
+
   /** 本地缩略图路径（相对于 THUMBNAIL_DIR，如 {id}.webp） */
   @Column({ type: 'varchar', length: 512, nullable: true, default: null })
   thumbnailPath: string | null;

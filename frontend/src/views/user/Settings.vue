@@ -46,19 +46,49 @@
     </div>
 
     <div class="card" style="margin-top: 20px;">
+      <h3 style="margin-bottom: 24px; font-family: var(--font-display); font-size: 16px; font-weight: 600;">
+        存储配额
+      </h3>
+      <t-loading :loading="quotaLoading" size="small">
+        <template v-if="quota">
+          <template v-if="quota.unlimited">
+            <p class="quota-note">当前账号不限量，已使用 {{ formatSize(quota.usedBytes) }}。</p>
+          </template>
+          <template v-else>
+            <div class="quota-row">
+              <span>已使用 <strong>{{ formatSize(quota.usedBytes) }}</strong> / {{ formatSize(quota.quotaBytes ?? 0) }}</span>
+              <span>剩余 {{ formatSize(quota.remainingBytes ?? 0) }}</span>
+            </div>
+            <t-progress
+              :percentage="quotaPercent"
+              :theme="quotaPercent >= 90 ? 'danger' : 'primary'"
+              :label="false"
+            />
+            <p v-if="quotaPercent >= 90" class="quota-note quota-note--warn">
+              配额即将用尽，超出后上传会被拒绝。可删除文件或联系管理员调整配额。
+            </p>
+          </template>
+        </template>
+        <p v-else class="quota-note">暂无配额信息</p>
+      </t-loading>
+    </div>
+
+    <div class="card" style="margin-top: 20px;">
       <ApiKeyManager />
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import MessagePlugin from '@/utils/message';
 import { useAuthStore } from '../../stores/auth';
 import { api } from '../../stores/auth';
 import { getErrorMessage } from '../../utils/error';
 import type { UserRole } from '../../types/user';
 import ApiKeyManager from '../../components/settings/ApiKeyManager.vue';
+import { getMyStorageQuota, type StorageQuotaSummary } from '../../api/quota';
+import { formatSize } from '../../utils/format';
 
 const authStore = useAuthStore();
 
@@ -102,6 +132,31 @@ const passwordRules = {
     },
   ],
 };
+
+/** 存储配额：后端按 files 实时汇总，前端只展示（不缓存到 store，避免过期） */
+const quota = ref<StorageQuotaSummary | null>(null);
+const quotaLoading = ref(true);
+
+/** 用量百分比：不限量或无配额时为 0；上限为 0 理论上不会出现（0 表示不限） */
+const quotaPercent = computed(() => {
+  const q = quota.value;
+  if (!q || q.unlimited || !q.quotaBytes) return 0;
+  return Math.min(100, Math.round((q.usedBytes / q.quotaBytes) * 100));
+});
+
+async function loadQuota() {
+  quotaLoading.value = true;
+  try {
+    quota.value = await getMyStorageQuota();
+  } catch (error) {
+    // 配额查询失败不应阻塞设置页其余功能，仅提示一次
+    MessagePlugin.error(getErrorMessage(error) || '获取存储配额失败');
+  } finally {
+    quotaLoading.value = false;
+  }
+}
+
+onMounted(loadQuota);
 
 const roleText = computed(() => {
   const map: Record<UserRole, string> = { super_admin: '超级管理员', admin: '管理员', user: '普通用户' };
@@ -149,5 +204,23 @@ async function handlePasswordChange() {
 
 .status-unverified {
   color: var(--text-tertiary);
+}
+.quota-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--text-muted, #8b93a7);
+}
+
+.quota-note {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--text-muted, #8b93a7);
+}
+
+.quota-note--warn {
+  color: var(--warning-color, #e37318);
 }
 </style>

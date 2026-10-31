@@ -27,6 +27,7 @@ import { HealthModule } from './health/health.module';
 import { VersionModule } from './version/version.module';
 import { ApiKeyModule } from './api-key/api-key.module';
 import { TelegramBotModule } from './telegram-bot/telegram-bot.module';
+import { QuotaModule } from './quota/quota.module';
 import { TelegramAccountPoolModule } from './telegram-account-pool/telegram-account-pool.module';
 import { TelegramAccountsModule } from './telegram-accounts/telegram-accounts.module';
 import { TelegramMirrorModule } from './telegram-mirror/telegram-mirror.module';
@@ -60,6 +61,7 @@ import { TelegramMirrorModule } from './telegram-mirror/telegram-mirror.module';
     PublicConfigModule,
     HealthModule,
     VersionModule,
+    QuotaModule,
     TelegramModule,
     ApiKeyModule,
     TelegramBotModule,

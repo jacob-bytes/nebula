@@ -87,6 +87,10 @@ describe('真实 SQLite 数据源关键业务与并发 QA', () => {
       'SqliteEnableBotInboundMirrorForEnabledRules1803800000000',
       // maxInflight 只更新应用层新建默认，不对无法区分来源的存量账号值回填
       'SqliteSetTelegramAccountDefaultInflight1803900000000',
+      // v0.1.0：用户存储配额（users.storageQuotaBytes，可空 = 继承全局默认）
+      'SqliteAddUserStorageQuota1804000000000',
+      // v0.1.0：存储抽象（files.storageProvider / storageKey，可空 = 走 Telegram）
+      'SqliteAddFileStorageLocator1804100000000',
     ]);
 
     await dataSource.undoLastMigration();
