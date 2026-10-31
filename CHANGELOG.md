@@ -6,6 +6,28 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.8.1] - 2026-11-01
+
+修复 SQLite 部署下「有文件即 500」的关联表缺失问题。
+
+### 修复
+
+- **SQLite 缺少 `file_tags` 连接表**：该表只在 PostgreSQL 迁移
+  `AddTagsAndFileTags1790000000000` 中创建，而 SQLite 只加载以 `Sqlite` 命名的迁移子集；
+  基线迁移按实体建表，不会创建 `@ManyToMany` 的连接表（`tags` 是实体所以存在，
+  `file_tags` 是连接表所以缺失）。
+- 症状：只要有文件记录，`GET /api/files` 在加载标签关联时就抛
+  `SQLITE_ERROR: no such table: file_tags` 并返回 500。空库时不会触发关联查询，
+  所以「新装能用、传了文件就不能用」，这也是它一直没被发现的原因。
+- 新增迁移 `SqliteAddFileTags1804300000000`：按 PG 版本等价补建
+  （两列复合主键 + 指向 files/tags 的级联外键 + tagId 反查索引），幂等。
+
+### 验证
+
+- `sqlite-migrations.spec.ts` 与 `sqlite-real-qa.spec.ts` 共 26 项通过
+  （含迁移清单、可逆回滚、数据保留）；
+- 真实 SQLite 实例上验证：修复前 `GET /api/files` 500，修复后返回 200 且分页正常。
+
 ## [0.8.0] - 2026-11-01
 
 侧栏去灰、整体更有呼吸感与动感。

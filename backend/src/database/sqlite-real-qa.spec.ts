@@ -93,6 +93,8 @@ describe('真实 SQLite 数据源关键业务与并发 QA', () => {
       'SqliteAddFileStorageLocator1804100000000',
       // v0.5.0：上传内容去重（files.contentHash + uploader 索引）
       'SqliteAddFileContentHash1804200000000',
+      // v0.8.1：补齐 SQLite 缺失的 file_tags 关联表（否则有文件即 500）
+      'SqliteAddFileTags1804300000000',
     ]);
 
     await dataSource.undoLastMigration();
