@@ -154,6 +154,33 @@ export const BRAND_SITE_TITLE: string = BRAND.nameZh;
 export const BRAND_ERROR_CODE_HEADER = 'x-' + BRAND.slug + '-error-code';
 `;
 
+/**
+ * 同步锁文件中的根包名。
+ *
+ * package-lock.json 被排除在全量替换之外（避免误改依赖名与 integrity 数据），
+ * 但它的根包名（顶层 name 与 packages[""].name）必须与 package.json 一致，
+ * 否则 npm ci 与 `npm ls` 会因根包名冲突告警。
+ */
+function syncLockfileNames() {
+  for (const dir of ['backend', 'frontend']) {
+    const pkgPath = resolve(ROOT, dir, 'package.json');
+    const lockPath = resolve(ROOT, dir, 'package-lock.json');
+    if (!existsSync(pkgPath) || !existsSync(lockPath)) continue;
+    const pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    const lock = JSON.parse(readFileSync(lockPath, 'utf8'));
+    let dirty = false;
+    if (lock.name !== pkg.name) { lock.name = pkg.name; dirty = true; }
+    if (lock.packages?.[''] && lock.packages[''].name !== pkg.name) {
+      lock.packages[''].name = pkg.name;
+      dirty = true;
+    }
+    if (dirty) {
+      writeFileSync(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+      console.log(`rename-brand: 已同步 ${dir}/package-lock.json 根包名 → ${pkg.name}`);
+    }
+  }
+}
+
 function writeGenerated(brand) {
   writeFileSync(resolve(ROOT, 'backend/src/common/brand.ts'), backendBrand(brand));
   writeFileSync(resolve(ROOT, 'frontend/src/brand.ts'), frontendBrand(brand));
@@ -196,6 +223,7 @@ function main() {
   writeGenerated(next);
 
   console.log(`rename-brand: ${prev.slug}/${prev.nameZh} → ${next.slug}/${next.nameZh}`);
+  syncLockfileNames();
   console.log(`rename-brand: 改写 ${changedFiles} 个文件，共 ${totalHits} 处`);
   console.log('rename-brand: 请执行 npm run typecheck 与构建验证，并检查 git diff。');
 }
