@@ -95,3 +95,6 @@ beta/
 
 # 品牌改名自测用的临时克隆
 .tmp-brand-test/
+
+# 临时预览（UI 截图与本地试跑，不入库）
+.tmp-preview/
