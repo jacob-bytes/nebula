@@ -6,6 +6,33 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.9.0] - 2026-11-01
+
+视觉体系迁移到 shadcn/ui 语义 token + indigo 主色。
+
+### 变更
+
+- **中性色改为 zinc 梯度**：页面 `#FFFFFF` / 暗色 `#09090B`（zinc-950），
+  卡片暗色 `#18181B`（zinc-900），边框 `zinc-200`，次要文字 `#52525B`（7.7:1）、
+  三级文字 `#71717A`（4.8:1）。
+- **主色改为 indigo**：亮色 indigo-600 `#4F46E5`，暗色 indigo-400 `#818CF8`。
+  暗色不用 indigo-500 的原因：它在 zinc-900 上只有 3.97:1，正文不达 AA；
+  提亮到 400 后 6.3:1，按钮前景改用近黑（8.9:1）。
+- **新增 shadcn 语义别名**：`--background/--foreground/--card/--popover/--primary/
+  --secondary/--muted/--accent/--destructive/--border/--input/--ring`；
+  旧的 `--color-bg-*` / `--text-*` 保留并映射到新别名，存量组件零改动。
+- **圆角改为 shadcn 的 0.625rem 基准**：sm 6 / md 8 / lg 10 / xl 14。
+- **扁平化**：侧栏去掉投影只留 1px 边框；品牌徽标与当前导航项去掉渐变，
+  改为纯 indigo 填充 + indigo 淡底（shadcn 的 `accent` 用法）。
+- **焦点环改用 `--ring`**，与 TDesign 的 `--td-brand-color` 同源。
+- `frontend/STYLE_GUIDE.md` 同步更新种子表、语义别名与圆角刻度。
+
+### 验证
+
+- 对比度实测：白底 primary 6.29、次要 7.73、三级 4.83；
+  暗底正文 16.97、次要 11.99、三级 6.91、primary 5.94，全部 ≥4.5:1。
+- `vue-tsc` 与 `vite build` 通过；vitest 392 项全部通过；浅色/暗色截图复核。
+
 ## [0.8.1] - 2026-11-01
 
 修复 SQLite 部署下「有文件即 500」的关联表缺失问题。

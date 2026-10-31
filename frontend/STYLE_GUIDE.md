@@ -1,6 +1,6 @@
 ﻿# FileCloud 前端样式开发规范
 
-> 基于 Cloudscape 设计语言 · Seed Token 架构 · Light/Dark 双主题
+> 基于 shadcn/ui 语义体系（zinc 中性 + indigo 主色）· Seed Token 架构 · Light/Dark 双主题
 > 适用于本项目所有前端页面的新增与修改
 
 ---
@@ -21,12 +21,30 @@
 
 | 令牌 | Light | Dark | 用途 |
 |------|-------|------|------|
-| `--seed-bg` | `#F2F3F3` | `#16191F` | 页面背景 |
-| `--seed-fg` | `#16191F` | `#E8EDF5` | 主文本 |
-| `--seed-primary` | `#0972D3` | `#539FE5` | 主操作色 |
-| `--seed-accent` | `#033160` | `#7DBBEE` | 强调/悬停 |
-| `--seed-surface` | `#FFFFFF` | `#1F242B` | 容器表面 |
-| `--seed-radius` | `4px` | `4px` | 基础圆角 |
+| `--seed-bg` | `#FFFFFF` | `#09090B` | 页面背景（zinc-950） |
+| `--seed-fg` | `#09090B` | `#FAFAFA` | 主文本（zinc-950 / zinc-50） |
+| `--seed-primary` | `#4F46E5` | `#818CF8` | 主操作色（indigo-600 / 400） |
+| `--seed-accent` | `#3730A3` | `#A5B4FC` | 强调/悬停（indigo-800 / 300） |
+| `--seed-surface` | `#FFFFFF` | `#18181B` | 容器表面（zinc-900） |
+| `--seed-radius` | `10px` | `10px` | 基础圆角（shadcn 0.625rem） |
+
+> 暗色下主色用 indigo-400 而非 500：indigo-500 在 zinc-900 上只有 3.97:1，
+> 正文不达 AA；提亮到 400 后 6.3:1，按钮前景改用 `#09090B`（8.9:1）。
+
+### 2.1.1 shadcn 语义别名（新增代码优先使用）
+
+```css
+var(--background) / var(--foreground)
+var(--card) / var(--card-foreground)
+var(--primary) / var(--primary-foreground)
+var(--secondary) / var(--secondary-foreground)
+var(--muted) / var(--muted-foreground)
+var(--accent) / var(--accent-foreground)
+var(--destructive)
+var(--border) / var(--input) / var(--ring)
+```
+
+旧的 `--color-bg-*` / `--text-*` 仍保留并映射到上述别名，避免存量组件大改。
 
 ### 2.2 语义令牌（组件中直接使用的层）
 
@@ -70,13 +88,13 @@ var(--space-5)  /* 20px */   var(--space-6)  /* 24px */
 var(--space-8)  /* 32px */
 ```
 
-圆角从种子派生，保持 Cloudscape 锐利几何：
+圆角按 shadcn 的 0.625rem 基准派生：
 
 ```css
-var(--radius-sm)  /* 4px — 按钮/输入框/标签 */
-var(--radius-md)  /* 8px — 卡片 */
-var(--radius-lg)  /* 12px — 弹窗/大容器 */
-var(--radius-xl)  /* 16px — 认证卡片 */
+var(--radius-sm)  /* 6px  — 按钮/输入框/标签 */
+var(--radius-md)  /* 8px  — 菜单/次级容器 */
+var(--radius-lg)  /* 10px — 卡片/表格/上传区 */
+var(--radius-xl)  /* 14px — 弹窗/认证卡片 */
 ```
 
 ### 2.4 字体
@@ -186,7 +204,7 @@ html .t-button--theme-primary.t-button--variant-base {
 }
 
 /* 错误 ✗ */
-.t-button--theme-primary { background: #0972D3 !important; }
+.t-button--theme-primary { background: #4F46E5 !important; }
 ```
 
 页面级 TDesign 微调写在 scoped style 中，同样只允许引用令牌。

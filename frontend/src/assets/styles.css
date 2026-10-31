@@ -9,57 +9,78 @@
    切换主题仅修改这 6 个种子值，组件样式零改动。
    ============================================================ */
 :root {
+  /* ----------------------------------------------------------
+     种子：向 shadcn/ui 的语义体系靠拢
+     - 中性色改用 zinc（冷灰），主色改用 indigo
+     - 背景/卡片均为白，层级靠 border + 极轻阴影
+     - 圆角按 shadcn 的 0.625rem 基准（sm6 / md8 / lg12 / xl16）
+     ---------------------------------------------------------- */
   --seed-bg: #FFFFFF;
-  --seed-fg: #16191F;
-  --seed-primary: #0972D3;
-  --seed-accent: #033160;
+  --seed-fg: #09090B;        /* zinc-950 */
+  --seed-primary: #4F46E5;   /* indigo-600 */
+  --seed-accent: #3730A3;    /* indigo-800 */
   --seed-surface: #FFFFFF;
-  --seed-radius: 4px;
+  --seed-radius: 10px;
 
-  /* --- Derived: Backgrounds --- */
-  --color-bg: var(--seed-bg);
-  /* 页面与卡片同为白色时，层级改由「浅灰面 + 边框 + 阴影」承担：
-     elevated 是白底上的一层浅灰（侧栏、表头、输入框hover）。 */
-  --color-bg-elevated: color-mix(in srgb, var(--seed-fg) 4%, var(--seed-bg));
-  --color-bg-surface: var(--seed-surface);
-  --color-bg-overlay: color-mix(in srgb, var(--seed-surface) 96%, var(--seed-fg));
-  --color-bg-hover: color-mix(in srgb, var(--seed-primary) 6%, var(--seed-surface));
-  --color-bg-selected: color-mix(in srgb, var(--seed-primary) 10%, var(--seed-surface));
+  /* --- shadcn 语义别名（新代码优先用这些） --- */
+  --background: var(--seed-bg);
+  --foreground: var(--seed-fg);
+  --card: var(--seed-surface);
+  --card-foreground: var(--seed-fg);
+  --popover: var(--seed-surface);
+  --popover-foreground: var(--seed-fg);
+  --primary: var(--seed-primary);
+  --primary-foreground: #FFFFFF;
+  --secondary: color-mix(in srgb, var(--seed-fg) 5%, var(--seed-bg));
+  --secondary-foreground: var(--seed-fg);
+  --muted: color-mix(in srgb, var(--seed-fg) 4%, var(--seed-bg));       /* zinc-100 */
+  --muted-foreground: #71717A;                                          /* zinc-500 */
+  --accent: color-mix(in srgb, var(--seed-primary) 8%, var(--seed-bg)); /* indigo-50 近似 */
+  --accent-foreground: var(--seed-accent);
+  --destructive: #DC2626;                                               /* red-600 */
+  --border: color-mix(in srgb, var(--seed-fg) 12%, var(--seed-bg));     /* zinc-200 */
+  --input: var(--border);
+  --ring: color-mix(in srgb, var(--seed-primary) 60%, var(--seed-bg));
+
+  /* --- Derived: Backgrounds（沿用旧名，映射到新语义） --- */
+  --color-bg: var(--background);
+  --color-bg-elevated: var(--muted);
+  --color-bg-surface: var(--card);
+  --color-bg-overlay: var(--card);
+  --color-bg-hover: var(--secondary);
+  --color-bg-selected: var(--accent);
 
   /* --- Derived: Accent --- */
-  --color-accent: var(--seed-primary);
+  --color-accent: var(--primary);
   --color-accent-soft: color-mix(in srgb, var(--seed-primary) 10%, transparent);
-  --color-accent-glow: color-mix(in srgb, var(--seed-primary) 18%, transparent);
+  --color-accent-glow: color-mix(in srgb, var(--seed-primary) 16%, transparent);
 
   /* --- Derived: Semantic --- */
-  --color-success: #037F0C;
-  --color-success-soft: color-mix(in srgb, #037F0C 8%, var(--seed-surface));
-  --color-warning: #8C6A00;
-  --color-warning-soft: color-mix(in srgb, #8C6A00 8%, var(--seed-surface));
-  --color-danger: #D13212;
-  --color-danger-soft: color-mix(in srgb, #D13212 8%, var(--seed-surface));
+  --color-success: #16A34A;
+  --color-success-soft: color-mix(in srgb, #16A34A 10%, var(--card));
+  --color-warning: #D97706;
+  --color-warning-soft: color-mix(in srgb, #D97706 10%, var(--card));
+  --color-danger: var(--destructive);
+  --color-danger-soft: color-mix(in srgb, var(--destructive) 10%, var(--card));
+  --color-cyan: var(--primary);
 
-  /* --- Derived: Text --- */
-  --text-primary: var(--seed-fg);
-  /* WCAG AA：正文/次要文字 ≥4.5:1。原 62% / 42% 在浅色下仅 4.73 / 2.63:1，
-     42% 的三级文字明确不达标（暗色下同样只有 3.51:1），故整体上提到 68% / 62%。
-     暗色主题沿用同一比例即已满足（6.91 / 6.00:1），无需另开分叉。 */
-  --text-secondary: color-mix(in srgb, var(--seed-fg) 68%, var(--seed-bg));
-  --text-tertiary: color-mix(in srgb, var(--seed-fg) 62%, var(--seed-bg));
+  /* --- Derived: Text（zinc 梯度的三档） --- */
+  --text-primary: #09090B;                                  /* 17.6:1 */
+  --text-secondary: #52525B;                                /* zinc-600  7.4:1 */
+  --text-tertiary: #71717A;                                 /* zinc-500  4.8:1 */
   --text-accent: var(--seed-primary);
-  --text-disabled: color-mix(in srgb, var(--seed-fg) 30%, var(--seed-bg));
-  --text-placeholder: color-mix(in srgb, var(--seed-fg) 35%, var(--seed-bg));
+  --text-disabled: #A1A1AA;                                 /* zinc-400 */
+  --text-placeholder: #A1A1AA;
 
   /* --- Derived: Borders --- */
-  --border-default: color-mix(in srgb, var(--seed-fg) 16%, var(--seed-bg));
+  --border-default: var(--border);
   --border-strong: color-mix(in srgb, var(--seed-fg) 22%, var(--seed-bg));
   --border-accent: color-mix(in srgb, var(--seed-primary) 35%, transparent);
 
-  /* --- Derived: Shadows --- */
-  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--seed-fg) 7%, transparent),
-               0 1px 3px color-mix(in srgb, var(--seed-fg) 5%, transparent);
-  --shadow-md: 0 4px 12px color-mix(in srgb, var(--seed-fg) 9%, transparent);
-  --shadow-lg: 0 12px 32px color-mix(in srgb, var(--seed-fg) 13%, transparent);
+  /* --- Shadows（shadcn 的 xs/sm，极轻） --- */
+  --shadow-sm: 0 1px 2px 0 color-mix(in srgb, var(--seed-fg) 5%, transparent);
+  --shadow-md: 0 4px 12px -2px color-mix(in srgb, var(--seed-fg) 8%, transparent);
+  --shadow-lg: 0 12px 32px -8px color-mix(in srgb, var(--seed-fg) 12%, transparent);
   --shadow-glow: none;
 
   /* --- Typography (system fonts — no external requests, LCP safe) --- */
@@ -67,14 +88,11 @@
   --font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, monospace;
 
-  /* --- Radii ---
-     由 4px 的锐利几何改为柔和几何：6 / 10 / 14 / 20。
-     种子仍是 4px，但派生改为「+2/+6/+10/+16」，
-     避免原来 ×2/×3/×4 把 md 直接顶到 16px、lg 到 24px 的过度圆角。 */
-  --radius-sm: calc(var(--seed-radius) + 2px);
-  --radius-md: calc(var(--seed-radius) + 6px);
-  --radius-lg: calc(var(--seed-radius) + 10px);
-  --radius-xl: calc(var(--seed-radius) + 16px);
+  /* --- Radii（shadcn: 0.625rem 基准） --- */
+  --radius-sm: calc(var(--seed-radius) - 4px);   /* 6 */
+  --radius-md: calc(var(--seed-radius) - 2px);   /* 8 */
+  --radius-lg: var(--seed-radius);               /* 10 */
+  --radius-xl: calc(var(--seed-radius) + 4px);   /* 14 */
 
   /* --- Transitions --- */
   --ease-out-expo: cubic-bezier(0.2, 0, 0, 1);
@@ -86,53 +104,49 @@
   /* --- Layout --- */
   --sidebar-width: 240px;
   --header-height: 0px;
-
-  /* --- Spacing (8px baseline) --- */
-  --space-1: 4px;
-  --space-2: 8px;
-  --space-3: 12px;
-  --space-4: 16px;
-  --space-5: 20px;
-  --space-6: 24px;
-  --space-8: 32px;
-
-  /* --- Backwards compat aliases --- */
-  --primary-color: var(--color-accent);
-  --bg-color: var(--color-bg);
-  --bg-secondary: var(--color-bg-elevated);
-  --bg-card: var(--color-bg-surface);
-  --border-color: var(--border-default);
-  --success: var(--color-success);
-  --error: var(--color-danger);
-  --warning: var(--color-warning);
-  --color-cyan: var(--seed-primary);
-  --color-error: var(--color-danger);
 }
 
 /* ============================================================
    2. DARK THEME — patches only seed tokens + semantic overrides
    ============================================================ */
 [data-theme="dark"] {
-  --seed-bg: #0F131A;
-  --seed-fg: #E8EDF5;
-  --seed-primary: #539FE5;
-  --seed-accent: #7DBBEE;
-  --seed-surface: #222834;
+  --seed-bg: #09090B;        /* zinc-950 */
+  --seed-fg: #FAFAFA;        /* zinc-50 */
+  /* indigo-400：indigo-500 在 zinc-900 上只有 3.97:1，正文不达标；
+     提亮到 400 后 6.3:1，同时按钮前景改用近黑（8.9:1）。 */
+  --seed-primary: #818CF8;
+  --seed-accent: #A5B4FC;    /* indigo-300 */
+  --seed-surface: #18181B;   /* zinc-900 */
 
-  /* 暗色下卡片靠"面差 + 边框"识别：面差 ~1.29:1、边框 ~1.69:1。
-     纯靠边框（1.3:1）在深色里几乎不可见，故同时提高面差。 */
-  --border-default: color-mix(in srgb, var(--seed-fg) 18%, var(--seed-surface));
+  --primary-foreground: #09090B;
+  --secondary: color-mix(in srgb, var(--seed-fg) 8%, var(--seed-bg));
+  --secondary-foreground: var(--seed-fg);
+  --muted: color-mix(in srgb, var(--seed-fg) 6%, var(--seed-bg));
+  --muted-foreground: #A1A1AA;                                    /* zinc-400 */
+  --accent: color-mix(in srgb, var(--seed-primary) 18%, var(--seed-bg));
+  --accent-foreground: var(--seed-accent);
+  --destructive: #EF4444;                                         /* red-500 */
+  --border: color-mix(in srgb, var(--seed-fg) 14%, var(--seed-surface));
+  --input: color-mix(in srgb, var(--seed-fg) 16%, var(--seed-surface));
+  --ring: color-mix(in srgb, var(--seed-primary) 70%, var(--seed-bg));
 
-  --color-success: #53D769;
-  --color-success-soft: color-mix(in srgb, #53D769 12%, var(--seed-surface));
-  --color-warning: #C7A830;
-  --color-warning-soft: color-mix(in srgb, #C7A830 12%, var(--seed-surface));
-  --color-danger: #E8604C;
-  --color-danger-soft: color-mix(in srgb, #E8604C 12%, var(--seed-surface));
+  --color-success: #4ADE80;
+  --color-success-soft: color-mix(in srgb, #4ADE80 12%, var(--card));
+  --color-warning: #FBBF24;
+  --color-warning-soft: color-mix(in srgb, #FBBF24 12%, var(--card));
+  --color-danger: var(--destructive);
+  --color-danger-soft: color-mix(in srgb, var(--destructive) 12%, var(--card));
 
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
+  --text-primary: #FAFAFA;   /* 18.1:1 on #18181B */
+  --text-secondary: #D4D4D8; /* zinc-300 12.6:1 */
+  --text-tertiary: #A1A1AA;  /* zinc-400  7.2:1 */
+  --text-disabled: #71717A;
+  --text-placeholder: #71717A;
+  --border-strong: color-mix(in srgb, var(--seed-fg) 24%, var(--seed-surface));
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
   --shadow-glow: none;
 }
 
@@ -182,7 +196,7 @@ body {
 
 /* --- Focus States --- */
 :focus-visible {
-  outline: 2px solid var(--seed-primary);
+  outline: 2px solid var(--ring);
   outline-offset: 2px;
   border-radius: var(--radius-sm);
 }
@@ -222,7 +236,7 @@ body {
   width: 380px; height: 380px;
   border-radius: 50%;
   filter: blur(80px);
-  opacity: 0.5;
+  opacity: 0.28;
   pointer-events: none;
 }
 .auth-container::before {
@@ -279,7 +293,6 @@ body {
      比整块灰面更轻，也让内容区的白更连贯。 */
   background: var(--color-bg-surface);
   border-right: 1px solid var(--border-default);
-  box-shadow: 8px 0 24px -20px color-mix(in srgb, var(--seed-fg) 45%, transparent);
   display: flex;
   flex-direction: column;
   position: sticky;
@@ -301,10 +314,8 @@ body {
 
 .sidebar-logo .logo-icon {
   width: 30px; height: 30px; border-radius: var(--radius-md);
-  background: linear-gradient(135deg,
-    var(--seed-primary),
-    color-mix(in srgb, var(--seed-primary) 55%, var(--seed-accent)));
-  box-shadow: 0 6px 16px -8px color-mix(in srgb, var(--seed-primary) 75%, transparent);
+  background: var(--primary);
+  color: var(--primary-foreground);
   display: flex; align-items: center; justify-content: center;
   font-size: 16px; flex-shrink: 0; color: #fff;
 }
@@ -340,17 +351,15 @@ body {
 }
 
 .nav-item:hover {
-  background: var(--color-bg-hover);
+  background: var(--muted);
   color: var(--text-primary);
   transform: translateX(2px);
 }
 
 /* 当前项：品牌色渐变胶囊 + 左侧高亮条，作为视觉锚点 */
 .nav-item.active {
-  background: linear-gradient(90deg,
-    var(--color-accent-soft),
-    color-mix(in srgb, var(--seed-primary) 3%, transparent));
-  color: var(--seed-primary);
+  background: var(--accent);
+  color: var(--accent-foreground);
   font-weight: 600;
 }
 
