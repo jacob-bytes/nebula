@@ -164,5 +164,43 @@ describe('QuotaService', () => {
       await service.setQuota('user-1', null);
       expect(userRepository.update).toHaveBeenCalledWith({ id: 'user-1' }, { storageQuotaBytes: null });
     });
+
+    describe('批量设置', () => {
+      it('去重并过滤空 id 后单条更新', async () => {
+        const { service, userRepository } = makeService();
+        userRepository.update.mockResolvedValue({ affected: 2 });
+        const result = await service.setQuotaBatch(['u1', 'u1', '  u2  ', ''], 3 * MB);
+
+        expect(userRepository.update).toHaveBeenCalledTimes(1);
+        const [criteria] = userRepository.update.mock.calls[0];
+        // TypeORM 的 In(...) 包装成 FindOperator，这里只断言参与更新的 id 集合
+        expect(JSON.stringify(criteria)).toContain('u1');
+        expect(JSON.stringify(criteria)).toContain('u2');
+        expect(result).toEqual({ requested: 2, updated: 2, missing: 0 });
+      });
+
+      it('affected 少于请求数时报告缺失数量', async () => {
+        const { service, userRepository } = makeService();
+        userRepository.update.mockResolvedValue({ affected: 1 });
+        const result = await service.setQuotaBatch(['u1', 'u2'], 0);
+        expect(result).toEqual({ requested: 2, updated: 1, missing: 1 });
+      });
+
+      it('空列表不发更新请求', async () => {
+        const { service, userRepository } = makeService();
+        const result = await service.setQuotaBatch([], 5 * MB);
+        expect(userRepository.update).not.toHaveBeenCalled();
+        expect(result).toEqual({ requested: 0, updated: 0, missing: 0 });
+      });
+
+      it('null 表示批量恢复全局默认', async () => {
+        const { service, userRepository } = makeService();
+        await service.setQuotaBatch(['u1'], null);
+        expect(userRepository.update).toHaveBeenCalledWith(
+          expect.anything(),
+          { storageQuotaBytes: null },
+        );
+      });
+    });
   });
 });

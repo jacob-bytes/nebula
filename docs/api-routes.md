@@ -143,6 +143,9 @@
 | `GET` | `/api/admin/bot-usage` | Bot 使用情况汇总（收到文件/下载次数/去重用户/带宽/趋势，仅 `super_admin`） |
 | `GET` | `/api/admin/bot-usage/users` | Bot 用户明细（TG 用户 ID + @用户名，支持关键字/时间筛选与分页，仅 `super_admin`） |
 | `GET` | `/api/admin/export` | CSV/JSON 数据导出 |
+| `GET` | `/api/admin/users/:id/quota` | 指定用户的配额与用量 |
+| `PUT` | `/api/admin/users/:id/quota` | 设置单个用户配额（`null` 恢复全局默认，`0` 不限） |
+| `PUT` | `/api/admin/users/quota/batch` | 批量设置配额（最多 500 个用户，必须显式传 `quotaBytes`） |
 
 多数分析、审计、缓存和安全配置接口仅允许 `super_admin`；管理员接口一律只接受 JWT 会话（不接受 API Key）。
 

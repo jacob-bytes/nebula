@@ -6,6 +6,22 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.4.0] - 2026-10-31
+
+配额支持批量运营。
+
+### 新增
+
+- `PUT /api/admin/users/quota/batch`：一次调整最多 500 个用户的配额，
+  单条 `IN (...)` 更新；返回 `{ requested, updated, missing }`，
+  `missing` 区分「请求里重复的 id」与「库里不存在/已软删的 id」。
+- DTO 校验：`userIds` 非空、每项 UUID v4、`quotaBytes` 必填（`null` = 恢复默认，`0` = 不限），
+  缺省时直接 400——避免把「忘了传」误当成「设为不限」。
+
+### 变更
+
+- 版本号 `0.4.0`；`docs/api-routes.md` 补三个配额端点。
+
 ## [0.3.0] - 2026-10-31
 
 补齐存储抽象的写入路径：对象存储不再只读。

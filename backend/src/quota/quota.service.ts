@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { HttpException, HttpStatus } from '@nestjs/common';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { File } from '../common/entities/file.entity';
 import { User } from '../common/entities/user.entity';
 
@@ -129,6 +129,33 @@ export class QuotaService {
       0,
     );
     await this.assertCanUpload(userId, total);
+  }
+
+  /**
+   * 批量设置配额。
+   *
+   * 用于运营侧「按批次统一调整」（例如给一批用户临时扩容）。
+   * 用单条 `IN (...)` 更新而不是逐个 update：既减少往返，也避免部分成功时无法判断进度。
+   * 返回值区分「请求里重复的 id」与「库里不存在的 id」，便于后台如实提示。
+   */
+  async setQuotaBatch(
+    userIds: string[],
+    quotaBytes: number | null,
+  ): Promise<{ requested: number; updated: number; missing: number }> {
+    const unique = Array.from(new Set((userIds ?? []).map((id) => String(id ?? '').trim()).filter(Boolean)));
+    if (unique.length === 0) return { requested: 0, updated: 0, missing: 0 };
+
+    const result = await this.userRepository.update(
+      { id: In(unique) },
+      { storageQuotaBytes: quotaBytes },
+    );
+    const updated = Number(result?.affected ?? 0);
+    return {
+      requested: unique.length,
+      updated,
+      // affected 少于请求数说明有 id 不存在（或已被软删除过滤）
+      missing: Math.max(0, unique.length - updated),
+    };
   }
 
   /** 管理员设置配额；null 表示恢复为继承全局默认。 */
