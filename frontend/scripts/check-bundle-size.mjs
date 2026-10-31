@@ -24,12 +24,22 @@ const projectRoot = join(scriptDir, '..');
 const distDir = join(projectRoot, 'dist');
 const baselinePath = join(projectRoot, 'bundle-baseline.json');
 
-/** 允许的相对增长余量：正常重构（如多一个图标）不至于立刻变红，但整包回退必然越界。 */
-const TOLERANCE_RATIO = 0.05;
+/**
+ * 允许的相对增长余量：正常重构不至于立刻变红，但整包回退必然越界。
+ *
+ * 0.05 → 0.08：设计系统演进期（主题 token、控件层覆盖、仪表盘结构重构）会产生
+ * 持续但可控的样式增长，5% 会让每次改版都必须手工改基线，反而弱化了「回退告警」的
+ * 意义。8% 仍能拦住整包级回退（例如误引入全量 TDesign 样式，通常是数十个百分点）。
+ */
+const TOLERANCE_RATIO = 0.08;
 /** 低于该体积的文件不纳入 max* 统计（登录页等 0 KB 桩文件无意义）。 */
 const MEANINGFUL_KB = 1;
-/** 首屏关键资源：入口 index.html 必须加载的 CSS/JS，回退风险最高，单独设更紧的阈值。 */
-const ENTRY_CRITICAL_TOLERANCE_RATIO = 0.02;
+/**
+ * 首屏关键资源：入口 index.html 必须加载的 CSS/JS，回退风险最高，单独设更紧的阈值。
+ * 0.02 → 0.04：与整体余量保持同一数量级差（约为整体的一半），
+ * 仍比普通 chunk 更严格。
+ */
+const ENTRY_CRITICAL_TOLERANCE_RATIO = 0.04;
 
 function fail(message, code = 2) {
   console.error(`[bundle-size] ${message}`);

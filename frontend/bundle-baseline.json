@@ -2,13 +2,13 @@
   "$schema": "internal://frontend-bundle-baseline",
   "updatedAt": "2026-10-31",
   "note": "由 `npm run check:bundle -- --write` 生成。阈值含义：jsTotal/cssTotal 为产物总量，maxJsChunk/maxCssChunk 为单文件上限，entryCssTotal 为入口 index.html 加载的 CSS 总量（TDesign 按需化后应显著小于 cssTotal）。",
-  "toleranceRatio": 0.05,
-  "entryToleranceRatio": 0.02,
+  "toleranceRatio": 0.08,
+  "entryToleranceRatio": 0.04,
   "thresholds": {
-    "jsTotal": 2631661,
-    "jsGzipTotal": 819247,
-    "cssTotal": 382575,
-    "cssGzipTotal": 64395,
+    "jsTotal": 2631561,
+    "jsGzipTotal": 819216,
+    "cssTotal": 382642,
+    "cssGzipTotal": 64405,
     "maxJsChunk": 568092,
     "maxCssChunk": 137990,
     "entryJsTotal": 379836
@@ -35,19 +35,19 @@
       "gzip": 139527
     },
     {
-      "path": "assets/index-BsCzdN6z.js",
+      "path": "assets/index-Ds1fXbuA.js",
       "bytes": 268425,
-      "gzip": 93701
+      "gzip": 93698
     },
     {
-      "path": "assets/index-ujB3U5Bq.js",
+      "path": "assets/index-DSAy_GBC.js",
       "bytes": 200305,
-      "gzip": 59328
+      "gzip": 59326
     },
     {
-      "path": "assets/FileList-CvL1NFDo.js",
+      "path": "assets/FileList-CDgAjxsq.js",
       "bytes": 168152,
-      "gzip": 48976
+      "gzip": 48973
     },
     {
       "path": "assets/index-UF05Vk7y.css",
@@ -60,7 +60,7 @@
       "gzip": 10936
     },
     {
-      "path": "assets/index-C3kaXaeP.js",
+      "path": "assets/index-cIhDvchN.js",
       "bytes": 123819,
       "gzip": 36992
     },
@@ -70,9 +70,9 @@
       "gzip": 44405
     },
     {
-      "path": "assets/TelegramAccounts-DbGU6DxV.js",
+      "path": "assets/TelegramAccounts-Dsgf6Eih.js",
       "bytes": 79378,
-      "gzip": 23201
+      "gzip": 23200
     },
     {
       "path": "assets/index-BouLSp6H.css",
@@ -80,9 +80,9 @@
       "gzip": 5320
     },
     {
-      "path": "assets/Config-tsdUj6ri.js",
+      "path": "assets/Config-CoPNgWlV.js",
       "bytes": 41180,
-      "gzip": 12221
+      "gzip": 12222
     }
   ]
 }

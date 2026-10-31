@@ -32,7 +32,7 @@
       <div class="card-head">
         <div class="card-head-text">
           <h3>上传趋势</h3>
-          <p>最近 {{ trendDays }} 天每日上传数量</p>
+          <p>最近 {{ trendDays }} 天每日上传数量{{ trendPeakLabel }}</p>
         </div>
         <div class="segmented" role="group" aria-label="趋势时间范围">
           <button
@@ -220,9 +220,23 @@ const trendDays = ref<7 | 30>(7);
 const trendLoading = ref(true);
 const trend = shallowRef<TrendPoint[]>([]);
 const trendChartRef = ref<HTMLElement | null>(null);
+/** 图表色跟随主题：暗色用更亮的 blue-400，避免深色背景上柱体发闷。 */
+function chartPrimaryColor(): string {
+  const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+  return dark ? chartTheme!.CHART_COLORS_DARK.primary : chartTheme!.CHART_COLORS.primary;
+}
+let themeObserver: MutationObserver | null = null;
 let trendChart: ReturnType<EChartsLib['init']> | null = null;
 
 /** 无图表环境（屏幕阅读器/JS 禁用降级）下的文字替代 */
+/** 峰值提示：ECharts 的 markPoint 需要额外注册组件，这里用文案表达，零体积且始终可见。 */
+const trendPeakLabel = computed(() => {
+  if (trend.value.length === 0) return '';
+  const peak = Math.max(...trend.value.map((item) => item.count));
+  if (peak <= 0) return ' · 暂无上传';
+  return ` · 单日峰值 ${peak} 个`;
+});
+
 const trendSummary = computed(() => {
   const total = trend.value.reduce((sum, item) => sum + item.count, 0);
   return `最近 ${trendDays.value} 天共上传 ${total} 个文件`;
@@ -256,10 +270,13 @@ async function renderTrendChart() {
     tooltip: {
       ...chartTheme!.tooltipBase,
       trigger: 'axis',
-      formatter: (params: Array<{ name: string; value: number }>) => {
-        const point = params?.[0];
+      axisPointer: { type: 'shadow' },
+      formatter: (params: Array<{ data: { date: string; count: number; bytes: number } }>) => {
+        const point = params?.[0]?.data;
         if (!point) return '';
-        return `${point.name}<br/>上传 ${point.value} 个`;
+        // 日期回显到「YYYY-MM-DD」，并同时给出数量与体积：只有数量无法判断是
+        // 「传了 1 个 200MB 的视频」还是「传了 1 个 80KB 的文档」。
+        return `${point.date}<br/>上传 <b>${point.count}</b> 个文件<br/>共 ${formatSize(point.bytes)}`;
       },
     },
     xAxis: {
@@ -281,10 +298,11 @@ async function renderTrendChart() {
         // 上传数量是离散整数：用柱状表达真实值，避免平滑曲线在 0/1 之间
         // 插值出并不存在的「波峰/波谷」。
         type: 'bar',
-        data: trend.value.map((item) => item.count),
+        // 数据点携带原始值：tooltip 需要同时展示数量与体积
+        data: trend.value.map((item) => ({ value: item.count, ...item })),
         barMaxWidth: 28,
         itemStyle: {
-          color: chartTheme!.CHART_COLORS.primary,
+          color: chartPrimaryColor(),
           borderRadius: [4, 4, 0, 0],
         },
       },
@@ -336,6 +354,9 @@ onMounted(async () => {
   await loadDashboardData();
   await loadTrend(trendDays.value);
   window.addEventListener('resize', handleResize);
+  // 主题切换后柱体颜色需要重算（ECharts 不会跟着 CSS 变量变）
+  themeObserver = new MutationObserver(() => { void renderTrendChart(); });
+  themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
   // 每分钟检查是否跨天，仅在日期真正变化时更新，避免多余渲染
   dayRefreshTimer = setInterval(() => {
     const d = new Date().toDateString();
@@ -353,6 +374,8 @@ onUnmounted(() => {
     dayRefreshTimer = null;
   }
   window.removeEventListener('resize', handleResize);
+  themeObserver?.disconnect();
+  themeObserver = null;
   trendChart?.dispose();
   trendChart = null;
 });

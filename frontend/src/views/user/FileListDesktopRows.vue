@@ -118,9 +118,9 @@
         @keydown.enter.prevent="emit('preview', file)"
         @keydown.space.prevent="emit('preview', file)"
       >
-        <ThumbnailImg :file-id="file.id" :mime-type="file.mimeType" :size="32" :file-name="file.originalName" :context="thumbnailContext" :version="file.uploadVersion" />
+        <ThumbnailImg :file-id="file.id" :mime-type="file.mimeType" :size="36" :file-name="file.originalName" :context="thumbnailContext" :version="file.uploadVersion" />
       </span>
-      <ThumbnailImg v-else :file-id="file.id" :mime-type="file.mimeType" :size="32" :file-name="file.originalName" :context="thumbnailContext" :version="file.uploadVersion" />
+      <ThumbnailImg v-else :file-id="file.id" :mime-type="file.mimeType" :size="36" :file-name="file.originalName" :context="thumbnailContext" :version="file.uploadVersion" />
       <div class="os-name-block">
         <span class="os-name-text" :class="{ 'deleted-name': file.isDeleted }" :title="file.originalName">
           {{ file.originalName }}
