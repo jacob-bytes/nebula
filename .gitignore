@@ -92,3 +92,6 @@ beta/
 # 依赖安装缓存（工作区内本地化，避免写入用户主目录）
 .npm-cache/
 .npm-logs/
+
+# 品牌改名自测用的临时克隆
+.tmp-brand-test/
