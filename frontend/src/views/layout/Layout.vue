@@ -1,5 +1,5 @@
 <template>
-  <div class="layout-container">
+  <div class="layout-container" :class="{ 'sidebar-collapsed': sidebarCollapsed }">
     <!-- Skip to main content (accessibility) -->
     <a href="#main-content" class="skip-link">跳转到主内容</a>
 
@@ -10,6 +10,9 @@
         :email="authStore.user?.email || ''"
         :role-text="roleText"
         :avatar-letter="avatarLetter"
+        :collapsed="sidebarCollapsed"
+        collapsible
+        @toggle-collapse="toggleSidebar"
         @logout="handleLogout"
       />
     </aside>
@@ -72,6 +75,23 @@ const authStore = useAuthStore();
 const { user } = storeToRefs(authStore);
 
 const drawerVisible = ref(false);
+
+/**
+ * 桌面侧边栏折叠。
+ * 持久化到 localStorage：折叠是"我的工作方式"，刷新后不应复位。
+ * 移动端抽屉不受影响（抽屉里不传 collapsible，也不加 sidebar-collapsed）。
+ */
+const SIDEBAR_COLLAPSED_KEY = 'nebula:sidebar-collapsed';
+const sidebarCollapsed = ref(localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1');
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, sidebarCollapsed.value ? '1' : '0');
+  } catch {
+    // 隐私模式下 localStorage 可能抛错：折叠功能本身不应因此失效
+  }
+}
 
 watch(() => route.path, () => {
   if (drawerVisible.value) {

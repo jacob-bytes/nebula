@@ -80,14 +80,14 @@ const emit = defineEmits<{
 
 const dialogVisible = ref(false);
 const newTagName = ref('');
-const newTagColor = ref('#0052d9');
+const newTagColor = ref('#0972D3');
 const tagSearch = ref('');
 const tagStore = useTagStore();
 const authStore = useAuthStore();
 const currentUserId = ref('');
 
 const presetColors = [
-  '#0052d9', '#0594fa', '#00a870', '#ebb105', '#e37318',
+  '#0972D3', '#0594fa', '#00a870', '#ebb105', '#e37318',
   '#e34d59', '#ed49b4', '#834ec2', '#b2b2b2',
 ];
 
@@ -108,7 +108,7 @@ watch(() => props.visible, async (val) => {
     currentUserId.value = authStore.user?.id || '';
     await tagStore.fetchTags();
     newTagName.value = '';
-    newTagColor.value = '#0052d9';
+    newTagColor.value = '#0972D3';
     tagSearch.value = '';
   }
 });
@@ -123,7 +123,7 @@ async function handleCreate() {
   try {
     await tagStore.createTag(name, newTagColor.value);
     newTagName.value = '';
-    newTagColor.value = '#0052d9';
+    newTagColor.value = '#0972D3';
   } catch (err) {
     MessagePlugin.error(getErrorMessage(err) || '创建标签失败');
   }

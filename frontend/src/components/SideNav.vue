@@ -15,10 +15,11 @@
         :to="item.to"
         class="nav-item"
         :class="{ active: isActive(item.to) }"
+        :title="collapsed ? item.label : undefined"
         @click="emit('navigate')"
       >
         <span class="nav-icon" v-html="item.icon"></span>
-        {{ item.label }}
+        <span class="nav-label">{{ item.label }}</span>
       </router-link>
 
       <template v-if="visibleAdminNav.length > 0">
@@ -29,15 +30,33 @@
           :to="item.to"
           class="nav-item"
           :class="{ active: isActive(item.to) }"
+          :title="collapsed ? item.label : undefined"
           @click="emit('navigate')"
         >
           <span class="nav-icon" v-html="item.icon"></span>
-          {{ item.label }}
+          <span class="nav-label">{{ item.label }}</span>
         </router-link>
       </template>
     </nav>
 
     <div class="sidebar-footer">
+      <button
+        v-if="collapsible"
+        type="button"
+        class="sidebar-collapse-btn"
+        :aria-expanded="!collapsed"
+        :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
+        :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
+        @click="emit('toggleCollapse')"
+      >
+        <span class="collapse-icon" :class="{ 'is-collapsed': collapsed }" aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 5l-5 5 5 5"/>
+          </svg>
+        </span>
+        <span class="nav-label">收起侧边栏</span>
+      </button>
+
       <div class="sidebar-user">
         <div class="sidebar-user-avatar">{{ avatarLetter }}</div>
         <div class="sidebar-user-info">
@@ -45,9 +64,30 @@
           <div class="sidebar-user-role">{{ roleText }}</div>
         </div>
       </div>
-      <t-button variant="outline" theme="danger" size="small" block @click="emit('logout')">
+      <!-- 折叠态：文字按钮会溢出 72px 侧栏，改为带无障碍名称的图标按钮 -->
+      <t-button
+        v-if="!collapsed"
+        variant="outline"
+        theme="danger"
+        size="small"
+        block
+        @click="emit('logout')"
+      >
         退出登录
       </t-button>
+      <button
+        v-else
+        type="button"
+        class="sidebar-logout-compact"
+        aria-label="退出登录"
+        title="退出登录"
+        @click="emit('logout')"
+      >
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 3H5a2 2 0 00-2 2v10a2 2 0 002 2h7"/>
+          <path d="M14 7l3 3-3 3M17 10H8"/>
+        </svg>
+      </button>
     </div>
   </div>
 </template>
@@ -64,11 +104,16 @@ const props = defineProps<{
   email: string;
   roleText: string;
   avatarLetter: string;
+  /** 桌面栏折叠态：只留图标，名称走 title 提示 */
+  collapsed?: boolean;
+  /** 是否显示折叠开关（移动端抽屉里不显示） */
+  collapsible?: boolean;
 }>();
 
 const emit = defineEmits<{
   navigate: [];
   logout: [];
+  toggleCollapse: [];
 }>();
 
 const route = useRoute();

@@ -807,8 +807,8 @@ function closeCleanupResult() {
   }
   /* 多选模式下选中态高亮（G14-18） */
   .mobile-file-admin-card.mobile-card-selected {
-    border-color: var(--color-primary, #0052d9);
-    box-shadow: 0 0 0 1px var(--color-primary, #0052d9) inset;
+    border-color: var(--color-accent, #0972D3);
+    box-shadow: 0 0 0 1px var(--color-accent, #0972D3) inset;
   }
 }
 </style>

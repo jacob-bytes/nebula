@@ -81,10 +81,21 @@
     </div>
 
     <!-- ⑦ OS 风格统一列表：文件夹与文件混排（文件夹在前） -->
-    <t-loading
+    <!-- 首屏骨架：与真实行同高，数据到达时列表不跳动（CLS） -->
+    <div
       v-if="(fileStore.loading || cursorLoading) && displayFiles.length === 0 && subfoldersInCurrentFolder.length === 0"
-      class="fl-loading"
-    />
+      class="os-list card fl-skeleton"
+      aria-busy="true"
+      aria-label="正在加载文件列表"
+    >
+      <div v-for="n in 6" :key="n" class="os-row fl-skeleton-row">
+        <div class="skeleton skeleton-block"></div>
+        <div class="fl-skeleton-text">
+          <div class="skeleton skeleton-line skeleton-line--name"></div>
+          <div class="skeleton skeleton-line skeleton-line--meta"></div>
+        </div>
+      </div>
+    </div>
     <div
       v-else-if="!folderLoading && !listError && (displayFiles.length > 0 || subfoldersInCurrentFolder.length > 0)"
       class="os-list card"

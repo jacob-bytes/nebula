@@ -6,6 +6,49 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.6.0] - 2026-11-01
+
+UI 质量提升：修复 P0 缺陷，补 P1 视觉层与 P2 交互细节。
+
+### 修复（P0）
+
+- **表单纵向布局失效**：`Config.vue` / `Users.vue` / `Settings.vue` 共 9 处写成
+  `layout="vertical"`，而 TDesign 1.20 中让标签上浮的属性是 `label-align="top"`
+  （`Login.vue` 即此写法）。导致标签被压成 100px 横排、长标签截断（如
+  "Cloudflare Turnstile" → "Cloudflare Turn..."）、帮助文案挤压输入框。
+- **三级文字对比度不达标**：`--text-tertiary` 在浅色下仅 2.63:1、暗色下 3.51:1（AA 要求 4.5:1）。
+  调整为 `--text-secondary` 68%、`--text-tertiary` 62%，实测浅色 5.77 / 4.73、
+  暗色 6.91 / 6.00，两套主题共用同一比例，无需分叉。
+- **品牌蓝不统一**：`TagManager.vue` 色板与 `admin/Files.vue` 的 CSS fallback 仍用
+  TDesign 默认蓝 `#0052d9`，与品牌蓝 `#0972D3` 并存；统一到品牌蓝与语义 token。
+
+### 新增（P1）
+
+- **统计卡层级**：首卡（我的文件）加品牌色强调条、渐变底与 32px 数值，
+  其余为次级；不再同权重平铺。
+- **数值滚动**：新增 `useCountUp` composable（easeOutCubic，520ms），
+  仪表盘四项数字平滑过渡；`prefers-reduced-motion` 下直接跳到目标值。
+- **骨架屏**：仪表盘统计卡与最近上传、文件列表首屏均用与真实内容同尺寸的骨架占位
+  （shimmer 走语义 token），消除首屏 CLS。
+- **空状态出口**：仪表盘空状态增加主 CTA「上传第一个文件」，直达文件页。
+- **侧边栏折叠**：240px ↔ 72px，状态持久化到 localStorage；折叠后保留图标、
+  `title` 提示与无障碍名称，底部「退出登录」在折叠态切换为带 aria-label 的图标按钮。
+
+### 变更（P2）
+
+- **按压反馈**：导航项与移动端卡片 `:active` 用亮度微调（不改尺寸，无抖动）；
+  按钮按下位移 1px。
+- **列表进入**：文件/文件夹行 40ms 阶梯淡入，仅前 8 行参与延迟。
+- **动效降级**：全局 `prefers-reduced-motion: reduce` 覆盖动画/过渡/骨架 shimmer，
+  按压位移一并取消（WCAG 2.3.3）。
+
+### 验证
+
+- `vue-tsc` 与 `vite build` 通过；vitest 392 项全部通过。
+- 用本地 SQLite 空库 + 真实登录态截图复核：表单已纵向、配置页标签完整、
+  折叠态 72px 无溢出、骨架屏在接口延迟 3s 时正常渲染。
+- 对比度用脚本按 token 实际混色值复算（非估算）。
+
 ## [0.5.0] - 2026-10-31
 
 针对 Telegram 的核心优化：上传内容去重，省掉重复上行带宽。

@@ -39,8 +39,11 @@
 
   /* --- Derived: Text --- */
   --text-primary: var(--seed-fg);
-  --text-secondary: color-mix(in srgb, var(--seed-fg) 62%, var(--seed-bg));
-  --text-tertiary: color-mix(in srgb, var(--seed-fg) 42%, var(--seed-bg));
+  /* WCAG AA：正文/次要文字 ≥4.5:1。原 62% / 42% 在浅色下仅 4.73 / 2.63:1，
+     42% 的三级文字明确不达标（暗色下同样只有 3.51:1），故整体上提到 68% / 62%。
+     暗色主题沿用同一比例即已满足（6.91 / 6.00:1），无需另开分叉。 */
+  --text-secondary: color-mix(in srgb, var(--seed-fg) 68%, var(--seed-bg));
+  --text-tertiary: color-mix(in srgb, var(--seed-fg) 62%, var(--seed-bg));
   --text-accent: var(--seed-primary);
   --text-disabled: color-mix(in srgb, var(--seed-fg) 30%, var(--seed-bg));
   --text-placeholder: color-mix(in srgb, var(--seed-fg) 35%, var(--seed-bg));
@@ -933,3 +936,166 @@ html .t-descriptions .t-descriptions__label { font-weight: 500; color: var(--tex
 
 /* Scroll margin for anchor targets */
 :target { scroll-margin-top: 24px; }
+
+/* ============================================================
+   17. UI 提升（v0.6.0）：骨架屏 / 层级 / 按压反馈 / 动效降级
+   ============================================================ */
+
+/* --- 17.1 骨架屏 ---------------------------------------------------------
+   用与最终内容同尺寸的占位块，避免数据到达时整块跳动（CLS < 0.1）。
+   颜色走语义 token，深浅主题自动适配。 */
+.skeleton {
+  position: relative;
+  overflow: hidden;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-sm);
+}
+.skeleton::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--color-bg-surface) 65%, transparent),
+    transparent
+  );
+  animation: skeleton-shimmer 1.4s var(--ease-out-expo) infinite;
+}
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+.skeleton-line { height: 12px; }
+.skeleton-line--label { width: 42%; margin-bottom: 12px; height: 10px; }
+.skeleton-line--value { width: 64%; height: 26px; }
+.skeleton-line--name { width: 55%; }
+.skeleton-line--meta { width: 32%; height: 10px; }
+.skeleton-block { width: 34px; height: 34px; border-radius: var(--radius-sm); flex: none; }
+
+/* --- 17.2 统计卡层级 -----------------------------------------------------
+   五张卡不再同权重：首卡（我的文件）作为主指标，跨两列并放大数值；
+   窄屏自动退回单列，保持原有节奏。 */
+.stat-card--primary {
+  border-color: var(--border-accent);
+  background:
+    linear-gradient(180deg, var(--color-accent-soft), transparent 42%),
+    var(--color-bg-surface);
+}
+.stat-card--primary::before {
+  content: '';
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--color-accent);
+}
+.stat-card--primary .value {
+  font-size: 32px;
+}
+@media (max-width: 720px) {
+  .stat-card--primary .value { font-size: 26px; }
+}
+
+/* --- 17.3 按压反馈 -------------------------------------------------------
+   只改不透明度/亮度，不改尺寸，避免按下时周围内容抖动。 */
+.nav-item:active,
+.mobile-card-list .mobile-file-card:active {
+  filter: brightness(0.96);
+}
+html[data-theme="dark"] .nav-item:active,
+html[data-theme="dark"] .mobile-card-list .mobile-file-card:active {
+  filter: brightness(1.12);
+}
+html .t-button:not(.t-button--disabled):not(:disabled):active {
+  transform: translateY(1px);
+  transition: transform var(--duration-fast) var(--ease-out-expo);
+}
+
+/* --- 17.4 列表进入：30–50ms 阶梯 -----------------------------------------
+   每个视图只动一处（文件列表），超过 8 行后不再延迟，避免长列表尾部空等。 */
+@keyframes list-enter {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.os-list .os-row.os-file,
+.os-list .os-row.os-folder {
+  animation: list-enter var(--duration-normal) var(--ease-out-expo) both;
+}
+.os-list .os-row.os-file:nth-child(1), .os-list .os-row.os-folder:nth-child(1) { --stagger-index: 0; }
+.os-list .os-row.os-file:nth-child(2), .os-list .os-row.os-folder:nth-child(2) { --stagger-index: 1; }
+.os-list .os-row.os-file:nth-child(3), .os-list .os-row.os-folder:nth-child(3) { --stagger-index: 2; }
+.os-list .os-row.os-file:nth-child(4), .os-list .os-row.os-folder:nth-child(4) { --stagger-index: 3; }
+.os-list .os-row.os-file:nth-child(5), .os-list .os-row.os-folder:nth-child(5) { --stagger-index: 4; }
+.os-list .os-row.os-file:nth-child(6), .os-list .os-row.os-folder:nth-child(6) { --stagger-index: 5; }
+.os-list .os-row.os-file:nth-child(7), .os-list .os-row.os-folder:nth-child(7) { --stagger-index: 6; }
+.os-list .os-row.os-file:nth-child(8), .os-list .os-row.os-folder:nth-child(8) { --stagger-index: 7; }
+.os-list .os-row.os-file,
+.os-list .os-row.os-folder { animation-delay: calc(var(--stagger-index, 0) * 40ms); }
+
+/* --- 17.5 动效降级（WCAG 2.3.3）-----------------------------------------
+   尊重系统"减少动态效果"：去掉位移/缩放/闪烁，只保留必要的状态切换。 */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  .skeleton::after { animation: none; }
+  .os-list .os-row.os-file,
+  .os-list .os-row.os-folder { animation: none; }
+  html .t-button:not(.t-button--disabled):not(:disabled):active { transform: none; }
+}
+
+/* --- 17.6 侧边栏折叠 -----------------------------------------------------
+   折叠后 240px → 72px，只留图标与折叠按钮；文字用 .nav-label 统一隐藏，
+   名称通过 title 提示保留（图标按钮必须有可读名称）。
+   移动端（≤768px）侧栏本来就走抽屉，不受该状态影响。 */
+.layout-container { --sidebar-current: var(--sidebar-width); }
+.layout-container.sidebar-collapsed { --sidebar-current: 72px; }
+.sidebar { width: var(--sidebar-current); }
+
+.sidebar-collapse-btn {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 8px 12px; margin-bottom: 8px;
+  border: 1px solid var(--border-default); border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-secondary);
+  font-size: 13px; font-family: var(--font-body); cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out-expo),
+              color var(--duration-fast) var(--ease-out-expo);
+}
+.sidebar-collapse-btn:hover { background: var(--color-bg-hover); color: var(--text-primary); }
+.sidebar-collapse-btn .collapse-icon { display: inline-flex; transition: transform var(--duration-normal) var(--ease-out-expo); }
+.sidebar-collapse-btn .collapse-icon.is-collapsed { transform: rotate(180deg); }
+
+.layout-container.sidebar-collapsed .nav-label,
+.layout-container.sidebar-collapsed .nav-section,
+.layout-container.sidebar-collapsed .sidebar-title,
+.layout-container.sidebar-collapsed .sidebar-user-info { display: none; }
+
+.layout-container.sidebar-collapsed .sidebar-logo { padding-left: 8px; padding-right: 8px; }
+.layout-container.sidebar-collapsed .sidebar-logo h2 { justify-content: center; }
+.layout-container.sidebar-collapsed .nav-item,
+.layout-container.sidebar-collapsed .sidebar-collapse-btn { justify-content: center; padding-left: 0; padding-right: 0; }
+.layout-container.sidebar-collapsed .sidebar-user { justify-content: center; }
+.layout-container.sidebar-collapsed .sidebar-footer { padding-left: 8px; padding-right: 8px; }
+
+/* --- 17.7 列表骨架行 ----------------------------------------------------- */
+.fl-skeleton { padding: 8px 12px; }
+.fl-skeleton-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 4px; border-bottom: 1px solid var(--border-default);
+}
+.fl-skeleton-row:last-child { border-bottom: none; }
+.fl-skeleton-text { flex: 1; display: flex; flex-direction: column; gap: 7px; }
+
+.sidebar-logout-compact {
+  display: flex; align-items: center; justify-content: center;
+  width: 40px; height: 32px; margin: 0 auto;
+  border: 1px solid var(--color-danger); border-radius: var(--radius-sm);
+  background: transparent; color: var(--color-danger); cursor: pointer;
+  transition: background var(--duration-fast) var(--ease-out-expo);
+}
+.sidebar-logout-compact:hover { background: var(--color-danger-soft); }

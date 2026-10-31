@@ -5,22 +5,34 @@
       <p>文件分发概览</p>
     </div>
 
-    <div class="stats-grid">
-      <div class="stat-card">
+    <!-- 首屏骨架：与真实卡片同尺寸占位，避免数据到达时整块跳动（CLS） -->
+    <div v-if="loading" class="stats-grid" aria-busy="true" aria-label="正在加载统计数据">
+      <div v-for="n in 5" :key="n" class="stat-card" :class="{ 'stat-card--primary': n === 1 }">
+        <div class="skeleton skeleton-line skeleton-line--label"></div>
+        <div class="skeleton skeleton-line skeleton-line--value"></div>
+      </div>
+    </div>
+
+    <div v-else class="stats-grid">
+      <div class="stat-card stat-card--primary">
         <h3>我的文件</h3>
-        <div class="value">{{ stats.fileCount }}</div>
+        <div class="value">{{ Math.round(fileCountDisplay) }}</div>
       </div>
       <div class="stat-card">
         <h3>总存储</h3>
-        <div class="value">{{ formatSize(stats.totalSize) }}</div>
+        <div class="value">{{ formatSize(Math.round(totalSizeDisplay)) }}</div>
       </div>
       <div class="stat-card">
         <h3>今日上传</h3>
-        <div class="value" style="color: var(--color-success);">{{ todayUploads }}</div>
+        <div class="value" style="color: var(--color-success);">
+          {{ Math.round(todayUploadsDisplay) }}
+        </div>
       </div>
       <div class="stat-card">
         <h3>总访问次数</h3>
-        <div class="value" style="color: var(--color-cyan);">{{ stats.totalAccessCount }}</div>
+        <div class="value" style="color: var(--text-accent);">
+          {{ Math.round(accessCountDisplay) }}
+        </div>
       </div>
       <div class="stat-card">
         <h3>账户类型</h3>
@@ -32,7 +44,15 @@
       <h3 style="margin-bottom: 20px; font-family: var(--font-display); font-size: 16px; font-weight: 600;">
         最近上传
       </h3>
-      <t-loading v-if="loading" />
+      <div v-if="loading" class="recent-skeleton" aria-busy="true" aria-label="正在加载最近上传">
+        <div v-for="n in 3" :key="n" class="recent-skeleton-row">
+          <div class="skeleton skeleton-block"></div>
+          <div class="recent-skeleton-text">
+            <div class="skeleton skeleton-line skeleton-line--name"></div>
+            <div class="skeleton skeleton-line skeleton-line--meta"></div>
+          </div>
+        </div>
+      </div>
       <!-- G11-15：加载失败态 + 重试，避免 allSettled 静默吞失败 -->
       <div v-else-if="loadError" class="empty-state">
         <div class="empty-icon">!</div>
@@ -41,9 +61,10 @@
         <t-button size="small" variant="outline" style="margin-top: 12px;" @click="loadDashboardData">重试</t-button>
       </div>
       <div v-else-if="recentFiles.length === 0" class="empty-state">
-        <div class="empty-icon">⊟</div>
-        <p>暂无文件上传记录</p>
-        <span class="empty-hint">上传文件后，最近的文件将显示在这里</span>
+        <div class="empty-icon" aria-hidden="true">⊟</div>
+        <p>还没有上传过文件</p>
+        <span class="empty-hint">上传后，最近的文件会显示在这里，并可用于生成分享链接</span>
+        <t-button theme="primary" class="empty-action" @click="goToUpload">上传第一个文件</t-button>
       </div>
       <div v-else class="file-list" style="margin-top: 0;">
         <div v-for="file in recentFiles" :key="file.id" class="file-item">
@@ -72,6 +93,8 @@ import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue';
 import { api } from '../../stores/auth';
 import { storeToRefs } from 'pinia';
 import { useAuthStore } from '../../stores/auth';
+import { useRouter } from 'vue-router';
+import { useCountUp } from '../../composables/useCountUp';
 import { formatSize, formatDate } from '@/utils/format';
 import FileTypeIcon from '@/components/FileTypeIcon.vue';
 import type { UserRole } from '../../types/user';
@@ -79,6 +102,7 @@ import type { FileItem } from '../../types/file';
 
 const authStore = useAuthStore();
 const { user } = storeToRefs(authStore);
+const router = useRouter();
 
 const stats = shallowRef({
   fileCount: 0,
@@ -106,6 +130,16 @@ const todayUploads = computed(() => {
   if (typeof todayCount === 'number') return todayCount;
   return recentFiles.value.filter(f => new Date(f.createdAt).toDateString() === todayStr.value).length;
 });
+
+const fileCountDisplay = useCountUp(computed(() => Number(stats.value.fileCount) || 0));
+const totalSizeDisplay = useCountUp(computed(() => Number(stats.value.totalSize) || 0));
+const accessCountDisplay = useCountUp(computed(() => Number(stats.value.totalAccessCount) || 0));
+const todayUploadsDisplay = useCountUp(computed(() => Number(todayUploads.value) || 0));
+
+/** 空状态的主出口：直接去文件页（上传入口在那里），而不是让用户自己找。 */
+function goToUpload() {
+  void router.push('/files');
+}
 
 function getFileIcon(mimeType: string) {
   if (mimeType.startsWith('image/')) return 'image';
@@ -188,5 +222,14 @@ onUnmounted(() => {
 .empty-hint {
   color: var(--text-tertiary);
   font-size: 13px;
+  display: block;
 }
+
+.empty-action { margin-top: 16px; }
+
+/* 最近上传骨架：行高与真实文件行一致，替换时无跳动 */
+.recent-skeleton { display: flex; flex-direction: column; gap: 14px; }
+.recent-skeleton-row { display: flex; align-items: center; gap: 12px; }
+.recent-skeleton-row .skeleton-block { width: 34px; height: 34px; }
+.recent-skeleton-text { flex: 1; display: flex; flex-direction: column; gap: 7px; }
 </style>

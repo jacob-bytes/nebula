@@ -7,7 +7,7 @@
 
     <div class="card" style="margin-bottom: 20px;">
       <h3 style="margin-bottom: 16px;">网站标题</h3>
-      <t-form layout="vertical">
+      <t-form label-align="top">
         <t-form-item label="浏览器标题">
           <t-input v-model="siteConfig.title" :maxlength="200" placeholder="请输入网站标题" autocomplete="off" name="site-title" />
           <div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">
@@ -30,7 +30,7 @@
       <!-- 认证配置 -->
       <div class="card">
         <h3 style="margin-bottom: 16px;">🔐 认证配置</h3>
-        <t-form layout="vertical">
+        <t-form label-align="top">
           <t-form-item label="允许新用户注册">
             <t-switch v-model="authConfig.registrationEnabled" />
             <div style="color: var(--text-secondary); font-size: 12px; margin-top: 4px;">
@@ -79,7 +79,7 @@
       <!-- SMTP配置 -->
       <div class="card">
         <h3 style="margin-bottom: 16px;">📧 SMTP邮箱配置</h3>
-        <t-form layout="vertical">
+        <t-form label-align="top">
           <t-form-item label="SMTP服务器">
             <t-input v-model="smtpConfig.host" placeholder="smtp.example.com" autocomplete="off" name="smtp-host" />
           </t-form-item>
@@ -137,7 +137,7 @@
         </svg>
         文件上传配置
       </h3>
-      <t-form layout="vertical">
+      <t-form label-align="top">
 
         <!-- 最大文件大小 -->
         <t-form-item label="最大文件大小 (MB)">
@@ -429,7 +429,7 @@
       </p>
 
       <h4 class="bot-group-title">基础配置</h4>
-      <t-form layout="vertical">
+      <t-form label-align="top">
         <t-form-item label="直链有效期（小时）">
           <t-input-number v-model="botConfig.linkTtlHours" :min="1" :max="720" :step="1" />
           <div class="bot-hint">1–720 小时</div>
@@ -450,7 +450,7 @@
       </t-form>
 
       <h4 class="bot-group-title">站点链接设置</h4>
-      <t-form layout="vertical">
+      <t-form label-align="top">
         <t-form-item label="域名模式">
           <t-radio-group v-model="botConfig.linkDomainMode">
             <t-radio value="auto">自动获取</t-radio>
@@ -519,7 +519,7 @@
     </div>
 
     <t-dialog v-model:visible="showBanDialog" header="封禁IP" @confirm="banIP">
-      <t-form layout="vertical">
+      <t-form label-align="top">
         <t-form-item label="IP地址" name="ip">
           <t-input v-model="banForm.ip" placeholder="请输入要封禁的IP地址" autocomplete="off" name="config-ban-ip" />
         </t-form-item>
