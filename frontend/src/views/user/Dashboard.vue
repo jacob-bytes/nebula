@@ -1,0 +1,192 @@
+<template>
+  <div>
+    <div class="page-header">
+      <h1>仪表盘</h1>
+      <p>文件分发概览</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <h3>我的文件</h3>
+        <div class="value">{{ stats.fileCount }}</div>
+      </div>
+      <div class="stat-card">
+        <h3>总存储</h3>
+        <div class="value">{{ formatSize(stats.totalSize) }}</div>
+      </div>
+      <div class="stat-card">
+        <h3>今日上传</h3>
+        <div class="value" style="color: var(--color-success);">{{ todayUploads }}</div>
+      </div>
+      <div class="stat-card">
+        <h3>总访问次数</h3>
+        <div class="value" style="color: var(--color-cyan);">{{ stats.totalAccessCount }}</div>
+      </div>
+      <div class="stat-card">
+        <h3>账户类型</h3>
+        <div class="value" style="font-size: 18px; font-family: var(--font-display);">{{ roleText }}</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3 style="margin-bottom: 20px; font-family: var(--font-display); font-size: 16px; font-weight: 600;">
+        最近上传
+      </h3>
+      <t-loading v-if="loading" />
+      <!-- G11-15：加载失败态 + 重试，避免 allSettled 静默吞失败 -->
+      <div v-else-if="loadError" class="empty-state">
+        <div class="empty-icon">!</div>
+        <p>{{ loadError }}</p>
+        <span class="empty-hint">数据加载失败，请检查网络后重试</span>
+        <t-button size="small" variant="outline" style="margin-top: 12px;" @click="loadDashboardData">重试</t-button>
+      </div>
+      <div v-else-if="recentFiles.length === 0" class="empty-state">
+        <div class="empty-icon">⊟</div>
+        <p>暂无文件上传记录</p>
+        <span class="empty-hint">上传文件后，最近的文件将显示在这里</span>
+      </div>
+      <div v-else class="file-list" style="margin-top: 0;">
+        <div v-for="file in recentFiles" :key="file.id" class="file-item">
+          <div class="file-icon" :class="getFileIcon(file.mimeType)">
+            <FileTypeIcon :mimeType="file.mimeType" :fileName="file.originalName" :size="18" />
+          </div>
+          <div class="file-info">
+            <div class="file-name">{{ file.originalName }}</div>
+            <div class="file-meta">
+              {{ formatSize(file.size) }} &middot; {{ formatDate(file.createdAt) }}
+            </div>
+          </div>
+          <div class="file-actions">
+            <t-tag :theme="file.accessType === 'public' ? 'success' : 'warning'" variant="light">
+              {{ file.accessType === 'public' ? '公开' : '私有' }}
+            </t-tag>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, shallowRef, computed, onMounted, onUnmounted } from 'vue';
+import { api } from '../../stores/auth';
+import { storeToRefs } from 'pinia';
+import { useAuthStore } from '../../stores/auth';
+import { formatSize, formatDate } from '@/utils/format';
+import FileTypeIcon from '@/components/FileTypeIcon.vue';
+import type { UserRole } from '../../types/user';
+import type { FileItem } from '../../types/file';
+
+const authStore = useAuthStore();
+const { user } = storeToRefs(authStore);
+
+const stats = shallowRef({
+  fileCount: 0,
+  totalSize: 0,
+  totalAccessCount: 0,
+  todayUploadCount: 0,
+});
+const recentFiles = shallowRef<FileItem[]>([]);
+const loading = ref(true);
+
+const roleText = computed(() => {
+  const map: Record<UserRole, string> = { super_admin: '超级管理员', admin: '管理员', user: '普通用户' };
+  return map[user.value?.role ?? 'user'] || '普通用户';
+});
+
+// new Date() 非响应式，直接在 computed 中使用时仅随 recentFiles 变化重算，跨午夜不会更新。
+// 改为依赖响应式日期 ref，并由定时器在跨天后刷新。
+const todayStr = ref(new Date().toDateString());
+let dayRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+/** R7：今日上传使用后端 stats 聚合的准确计数（客户端本地日零点口径），
+ * 不再从最近 5 条列表估算；stats 缺失字段时回退到最近列表估算避免显示 0 误导 */
+const todayUploads = computed(() => {
+  const todayCount = stats.value.todayUploadCount;
+  if (typeof todayCount === 'number') return todayCount;
+  return recentFiles.value.filter(f => new Date(f.createdAt).toDateString() === todayStr.value).length;
+});
+
+function getFileIcon(mimeType: string) {
+  if (mimeType.startsWith('image/')) return 'image';
+  if (mimeType.includes('pdf')) return 'pdf';
+  return 'default';
+}
+
+/** G11-15：加载失败态（统计 / 最近文件任一请求失败即展示，避免 allSettled 静默吞失败） */
+const loadError = ref<string | null>(null);
+let loadSeq = 0;
+
+async function loadDashboardData() {
+  const seq = ++loadSeq;
+  loading.value = true;
+  loadError.value = null;
+  // R7：以客户端本地今日零点为统计口径传给后端，避免服务器/用户时区不一致
+  const localDayStart = new Date();
+  localDayStart.setHours(0, 0, 0, 0);
+  const [statsResult, filesResult] = await Promise.allSettled([
+    api.get('/users/me/stats', { params: { todayStart: localDayStart.toISOString() } }),
+    api.get('/files?limit=5'),
+  ]);
+  // 防止并发重试时旧请求覆盖新状态
+  if (seq !== loadSeq) return;
+  if (statsResult.status === 'fulfilled') {
+    stats.value = statsResult.value.data.data;
+  } else {
+    loadError.value = '统计信息加载失败';
+  }
+  if (filesResult.status === 'fulfilled') {
+    recentFiles.value = filesResult.value.data.data.files;
+  } else if (!loadError.value) {
+    loadError.value = '最近文件加载失败';
+  }
+  loading.value = false;
+}
+
+onMounted(() => {
+  loadDashboardData();
+});
+
+onMounted(() => {
+  // 每分钟检查是否跨天，仅在日期真正变化时更新，避免多余渲染
+  dayRefreshTimer = setInterval(() => {
+    const d = new Date().toDateString();
+    if (d !== todayStr.value) {
+      todayStr.value = d;
+      // R7：跨天后重新拉取统计，使“今日上传”按新一天口径归零并保持准确
+      void loadDashboardData();
+    }
+  }, 60_000);
+});
+
+onUnmounted(() => {
+  if (dayRefreshTimer) {
+    clearInterval(dayRefreshTimer);
+    dayRefreshTimer = null;
+  }
+});
+</script>
+
+<style scoped>
+.empty-state {
+  text-align: center;
+  padding: 40px 0;
+}
+
+.empty-icon {
+  font-size: 40px;
+  color: var(--text-tertiary);
+  margin-bottom: 12px;
+}
+
+.empty-state p {
+  color: var(--text-secondary);
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.empty-hint {
+  color: var(--text-tertiary);
+  font-size: 13px;
+}
+</style>

@@ -1,0 +1,1668 @@
+<template>
+  <div
+    class="filelist-page"
+    @dragenter="handlePageDragEnter"
+    @dragover="handlePageDragOver"
+    @dragleave="handlePageDragLeave"
+    @drop="handlePageDrop"
+    @paste="handlePagePaste"
+  >
+    <!-- 拖拽上传覆盖层 -->
+    <div v-if="isDraggedOver" class="drop-overlay">
+      <div class="drop-overlay-content">
+        <t-icon name="upload" class="drop-overlay-icon" />
+        <h2>释放文件以上传</h2>
+      </div>
+    </div>
+
+    <!-- ① 地址栏：文件路径 + 新建文件夹 / 上传（M6 拆出为展示组件） -->
+    <FileListAddressBar
+      :current-folder-id="folderStore.currentFolderId"
+      :breadcrumb="folderStore.breadcrumb"
+      :drag-over-folder-id="dragOverFolderId"
+      :root-drop-target="ROOT_DROP_TARGET"
+      :show-mobile-back="isMobile && folderStore.currentFolderId !== null"
+      :parent-folder-id="parentFolderId"
+      @navigate="onFolderNavigate"
+      @create-folder="openCreateFolderDialog"
+      @upload="showUploadModal = true"
+      @folder-drag-over="onFolderDragOver"
+      @folder-drag-leave="onFolderDragLeave"
+      @drop-on-folder="onDropOnFolder"
+    />
+
+    <!-- ② 工具栏：搜索 + 标签（M6 拆出为展示组件） -->
+    <FileListToolbar
+      v-model:search="search"
+      :tag-button-label="tagButtonLabel"
+      @search="handleSearch"
+      @clear="handleClearSearch"
+      @manage-tags="showTagManager = true"
+    />
+
+    <!-- ③④⑤ 批量操作栏 / 已选标签筛选 / Markdown 结果（M6 拆出为展示组件） -->
+    <FileListBatchActions
+      v-model:markdown="markdownResult"
+      :selected-count="selectedFileIds.length"
+      :image-count="selectedImages.length"
+      :busy="isBatchDeleting"
+      :tag-filters="filteredTagItems"
+      @convert-markdown="convertToMarkdown"
+      @copy-links="copyDownloadLinks"
+      @batch-tag="openBatchTagDialog"
+      @move="openMoveDialogForFiles()"
+      @batch-delete="openBatchDeleteDialog"
+      @clear-selection="clearSelection"
+      @remove-tag="removeTagFilter"
+      @clear-tags="clearTagFilters"
+      @copy-markdown="copyMarkdown"
+    />
+
+    <!-- ⑥ 空状态：当前文件夹下既无文件也无子文件夹 -->
+    <div v-if="folderLoading" class="fl-loading-state">
+      <t-loading class="fl-loading" text="加载当前文件夹..." />
+    </div>
+    <div v-else-if="listError" class="fl-error-state">
+      <p>文件列表加载失败，请稍后重试。</p>
+      <t-button size="small" variant="outline" @click="refetchFiles">重试</t-button>
+    </div>
+    <div
+      v-else-if="fileStore.files.length === 0 && subfoldersInCurrentFolder.length === 0 && !fileStore.loading && !cursorLoading"
+      class="upload-zone"
+      @click="!consumeLongPressClick() && (showUploadModal = true)"
+      @contextmenu.prevent="openBlankCtxMenu"
+      @touchstart="handleTouchStart($event, 'blank')"
+      @touchmove="handleTouchMove"
+      @touchend="handleTouchEnd"
+    >
+      <t-icon name="folder-add" class="empty-upload-icon" />
+      <h3>拖拽文件到此处，或点击上传</h3>
+      <p class="empty-upload-hint">支持图片、PDF、ZIP 等格式，单文件最大限制见系统配置</p>
+    </div>
+
+    <!-- ⑦ OS 风格统一列表：文件夹与文件混排（文件夹在前） -->
+    <t-loading
+      v-if="(fileStore.loading || cursorLoading) && displayFiles.length === 0 && subfoldersInCurrentFolder.length === 0"
+      class="fl-loading"
+    />
+    <div
+      v-else-if="!folderLoading && !listError && (displayFiles.length > 0 || subfoldersInCurrentFolder.length > 0)"
+      class="os-list card"
+      :class="{ 'is-refreshing': refreshing }"
+      @contextmenu.prevent="openBlankCtxMenu"
+    >
+      <!-- G11-12：搜索/排序重拉时保留旧列表并叠加半透明 loading，避免列表闪空 -->
+      <div v-if="refreshing" class="os-refresh-overlay">
+        <t-loading size="small" text="正在刷新..." />
+      </div>
+      <!-- 桌面端：表格式列表 -->
+      <div v-if="!isMobile" class="os-list-scroll">
+        <div class="os-list-inner">
+          <!-- 表头 + 文件夹行 + 文件行（M6 拆出为展示组件） -->
+          <FileListDesktopRows
+            :subfolders="subfoldersInCurrentFolder"
+            :files="displayFiles"
+            :selected-ids="selectedFileIds"
+            :is-all-selected="isAllSelected"
+            :is-indeterminate="isIndeterminate"
+            :busy="isBatchDeleting"
+            :sort-by="sortBy"
+            :sort-order="sortOrder"
+            :drag-over-folder-id="dragOverFolderId"
+            :dragging-file-ids="draggingFileIds"
+            :thumbnail-context="thumbnailContext"
+            @toggle-sort="toggleSort"
+            @toggle-select-all="toggleSelectAll"
+            @file-select="toggleFileSelect"
+            @folder-open="onFolderOpen"
+            @folder-ctxmenu="openFolderCtxMenu"
+            @file-ctxmenu="openFileCtxMenu"
+            @touch-start="handleTouchStart"
+            @touch-move="handleTouchMove"
+            @touch-end="handleTouchEnd"
+            @folder-drag-over="onFolderDragOver"
+            @folder-drag-leave="onFolderDragLeave"
+            @drop-on-folder="onDropOnFolder"
+            @file-drag-start="onFileDragStart"
+            @file-drag-end="onFileDragEnd"
+            @download="downloadFile"
+            @preview="openPreview"
+            @tag-filter="addTagFilter"
+          />
+
+          <!-- 无限滚动哨兵 -->
+          <div ref="scrollSentinel" class="os-sentinel">
+            <t-loading v-if="cursorLoading" size="small" text="加载中..." />
+            <template v-else-if="loadMoreError">
+              <span class="os-muted">更多文件加载失败</span>
+              <t-button size="small" variant="outline" class="os-sentinel-more" @click="retryLoadMore">重试</t-button>
+            </template>
+            <template v-else-if="loadLimitExceeded">
+              <span class="os-muted">已达加载上限 {{ fileStore.files.length }} 条，仍有更多文件</span>
+              <t-button size="small" variant="outline" class="os-sentinel-more" @click="continueLoadMore">继续加载</t-button>
+            </template>
+            <span v-else-if="!hasMore" class="os-muted">已加载全部 {{ fileStore.total }} 个文件</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 移动端：文件夹行 + 文件卡片（M6 拆出为展示组件） -->
+      <FileListMobileList
+        v-else
+        :subfolders="subfoldersInCurrentFolder"
+        :files="displayFiles"
+        :selectable-count="selectableFiles.length"
+        :selected-ids="selectedFileIds"
+        :is-all-selected="isAllSelected"
+        :is-indeterminate="isIndeterminate"
+        :busy="isBatchDeleting"
+        :is-admin="isAdmin"
+        :thumbnail-context="thumbnailContext"
+        @toggle-select-all="toggleSelectAll"
+        @folder-click="onMobileFolderClick"
+        @folder-ctxmenu="openFolderCtxMenu"
+        @file-ctxmenu="openFileCtxMenu"
+        @touch-start="handleTouchStart"
+        @touch-move="handleTouchMove"
+        @touch-end="handleTouchEnd"
+        @file-select="toggleFileSelect"
+        @tag-filter="addTagFilter"
+        @copy-link="copyLink"
+        @preview="openPreview"
+        @download="downloadFile"
+        @tag-editor="openTagEditor"
+        @delete="handleDelete"
+        @restore="handleRestore"
+        @force-delete="handleForceDelete"
+      />
+    </div>
+
+    <!-- 上传弹窗 -->
+    <UploadModal :visible="showUploadModal" :initial-files="dropFiles" :initial-drop-result="dropCollected" :folder-id="folderStore.currentFolderId" @close="handleUploadModalClose" @uploaded="onUploaded" @drop-consumed="releaseDropPayload" />
+
+    <!-- 标签管理弹窗 -->
+    <TagManager v-model:visible="showTagManager" :selected-tag-ids="selectedTagIds" @filter="handleTagManagerFilter" />
+
+    <!-- 文件标签编辑器 -->
+    <FileTagEditor
+      v-model:visible="tagEditorVisible"
+      :file-id="tagEditorFileId"
+      :file-tags="tagEditorFileTags"
+      @saved="onTagSaved"
+    />
+
+    <!-- 密码设置弹窗 -->
+    <t-dialog v-model:visible="passwordDialog.visible" header="设置访问密码" width="400px" @confirm="savePassword" @close="passwordDialog.visible = false">
+      <t-input
+        v-model="passwordDialog.value"
+        type="password"
+        placeholder="输入密码（留空则移除密码）"
+        clearable
+        autocomplete="off"
+        name="file-password"
+      />
+      <div class="fl-dialog-hint">设置密码后，访问者需要输入密码才能查看该文件</div>
+    </t-dialog>
+
+    <!-- 访问次数限制弹窗 -->
+    <t-dialog v-model:visible="accessCountDialog.visible" header="设置访问次数限制" width="400px" @confirm="saveAccessCount" @close="accessCountDialog.visible = false">
+      <t-input-number v-model="accessCountDialog.value" :min="-1" theme="normal" style="width: 100%" />
+      <div class="fl-dialog-hint">-1 表示不限制访问次数；超过上限后文件将无法再被访问</div>
+    </t-dialog>
+
+    <!-- 限时访问弹窗 -->
+    <t-dialog v-model:visible="expiresDialog.visible" header="设置限时访问" width="400px" @confirm="saveExpires" @close="expiresDialog.visible = false">
+      <t-select v-model="expiresDialog.value" :options="expiresOptions" style="width: 100%" />
+      <div class="fl-dialog-hint">选择「永久」表示不限时；限时到期后文件将无法再被访问</div>
+    </t-dialog>
+
+    <!-- 删除确认弹窗 -->
+    <t-dialog
+      v-model:visible="deleteDialog.visible"
+      :header="deleteDialog.isBatch ? '确认批量删除文件' : '确认删除文件'"
+      width="420px"
+      :confirm-btn="{ content: deleteDialog.isBatch ? `删除 ${deleteDialog.fileIds.length} 个文件` : '删除', loading: isBatchDeleting }"
+      :confirm-button-props="{ disabled: isBatchDeleting }"
+      @confirm="confirmDelete"
+      @close="deleteDialog.visible = false"
+    >
+      <div class="fl-delete-body">
+        <p v-if="deleteDialog.isBatch">确定要删除已选的 <strong>{{ deleteDialog.fileIds.length }}</strong> 个文件吗？</p>
+        <p v-else>确定要删除文件 <strong>{{ deleteDialog.fileName }}</strong> 吗？</p>
+        <div class="fl-delete-note">
+          <p class="fl-delete-note-title">删除说明：</p>
+          <ul>
+            <li>文件将进入 <strong>7 天冷静期</strong>，期间可以恢复</li>
+            <li>冷静期内文件不可访问和下载</li>
+            <li>7 天后文件将被永久删除</li>
+            <li>删除后 10 分钟内不可重复请求</li>
+          </ul>
+        </div>
+      </div>
+    </t-dialog>
+
+    <!-- 批量添加标签弹窗 -->
+    <t-dialog v-model:visible="batchTagDialog.visible" header="批量添加标签" width="420px" @confirm="confirmBatchTags" @close="batchTagDialog.visible = false">
+      <div class="fl-delete-body">
+        <p>为 <strong>{{ selectedFileIds.length }}</strong> 个文件添加标签：</p>
+        <div class="fl-batch-tags">
+          <t-tag
+            v-for="tag in tagStore.tags"
+            :key="tag.id"
+            size="small"
+            :theme="batchTagDialog.selectedTagIds.includes(tag.id) ? 'primary' : 'default'"
+            variant="light"
+            class="fl-batch-tag"
+            @click="toggleBatchTag(tag.id)"
+          >
+            {{ tag.name }}
+          </t-tag>
+          <span v-if="!tagStore.tags || tagStore.tags.length === 0" class="os-muted">暂无标签，请先在标签管理中创建</span>
+        </div>
+      </div>
+    </t-dialog>
+
+    <!-- 文件夹相关弹窗 -->
+    <FolderCreateDialog v-model:visible="showCreateFolderDialog" :parent-id="folderStore.currentFolderId" @created="onFolderCreated" />
+    <FolderRenameDialog v-model:visible="showRenameFolderDialog" :folder="renameTargetFolder" />
+    <FolderMoveDialog
+      v-model:visible="showMoveDialog"
+      :target-kind="moveTargetKind"
+      :target-ids="moveTargetIds"
+      :disabled-ids="moveDisabledIds"
+      @moved="onFolderMoved"
+    />
+    <CreateShareDialog
+      v-model:visible="showShareDialog"
+      :target-type="shareTargetType"
+      :target-id="shareTargetId"
+      :target-name="shareTargetName"
+    />
+
+    <!-- 获取下载链接弹窗（永久公开 / 限时公开 / 限次下载） -->
+    <DownloadLinkDialog
+      v-model:visible="showDownloadLinkDialog"
+      :file-id="downloadLinkTargetId"
+      :file-name="downloadLinkTargetName"
+    />
+
+    <!-- 文件重命名弹窗 -->
+    <FileRenameDialog v-model:visible="showRenameFileDialog" :file="renameTargetFile" />
+
+    <!-- 自定义右键菜单（桌面右键 / 移动端长按） -->
+    <FileContextMenu
+      v-model:visible="ctxMenu.visible"
+      :x="ctxMenu.x"
+      :y="ctxMenu.y"
+      :target="ctxMenu.target"
+      :clipboard-count="fileClipboard.length"
+      :is-admin="isAdmin"
+      @action="onCtxAction"
+    />
+
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, onMounted, computed, reactive, watch, onUnmounted } from 'vue';
+import { usePageVisibility } from '@/composables/usePageVisibility';
+import { useRouter, useRoute } from 'vue-router';
+import MessagePlugin from '@/utils/message';
+import { DialogPlugin } from 'tdesign-vue-next/es/dialog';
+import { useFileStore } from '../../stores/files';
+import { useAuthStore, api } from '../../stores/auth';
+import { getErrorMessage, getDownloadErrorMessage } from '../../utils/error';
+import { formatDate } from '@/utils/format';
+import { useDownloadsStore } from '../../stores/downloads';
+import { useFileListQuery } from '../../composables/useFileListQuery';
+import { useMobile } from '../../composables/useMobile';
+import UploadModal from '../../components/UploadModal.vue';
+import { collectFromDrop } from '../../utils/folder-traverse';
+import type { DropCollectResult } from '../../utils/folder-traverse';
+import TagManager from '../../components/TagManager.vue';
+import FileTagEditor from '../../components/FileTagEditor.vue';
+// M6 拆分：地址栏 / 工具栏 / 批量操作区 / 桌面列表行 / 移动列表已拆为展示组件（本目录内）
+import FileListAddressBar from './FileListAddressBar.vue';
+import FileListToolbar from './FileListToolbar.vue';
+import FileListBatchActions from './FileListBatchActions.vue';
+import FileListDesktopRows from './FileListDesktopRows.vue';
+import FileListMobileList from './FileListMobileList.vue';
+// M6 拆分：行判定（可预览 / 可操作 / 行类名 / 冷静期常量）与两个列表组件共用
+import { FORCE_DELETE_WAIT_MS, canPreviewFile, isFileActionable } from '../../utils/file-row-predicates';
+import FolderCreateDialog from '../../components/folder/FolderCreateDialog.vue';
+import FolderRenameDialog from '../../components/folder/FolderRenameDialog.vue';
+import FolderMoveDialog from '../../components/folder/FolderMoveDialog.vue';
+import CreateShareDialog from '../../components/share/CreateShareDialog.vue';
+import DownloadLinkDialog from '../../components/share/DownloadLinkDialog.vue';
+import FileContextMenu, { type CtxTarget } from '../../components/file/FileContextMenu.vue';
+import FileRenameDialog from '../../components/file/FileRenameDialog.vue';
+import { useMediaPlaybackStore, type MediaSessionItem } from '../../stores/mediaPlayback';
+import { getPreviewKind, isMediaDirectLinkKind, buildFilePreviewUrl } from '../../utils/preview';
+import { useTagStore } from '../../stores/tags';
+import { useFolderStore, type Folder } from '../../stores/folders';
+import { getParentFolderId } from '../../utils/folder-navigation';
+import type { FileItem } from '../../types/file';
+import { extractPastedMediaFiles } from '../../utils/clipboard-upload';
+
+const fileStore = useFileStore();
+const authStore = useAuthStore();
+const tagStore = useTagStore();
+const folderStore = useFolderStore();
+const downloads = useDownloadsStore();
+
+/** 缩略图 / 封面共享缓存上下文（与视频预览封面共用同一 Blob 缓存） */
+const thumbnailContext = computed(() => `u:${authStore.user?.id ?? ''}`);
+const router = useRouter();
+const route = useRoute();
+const { isPageVisible } = usePageVisibility();
+
+/** 查询域（搜索 / 排序 / 标签筛选 / 游标加载 / URL 同步） */
+const {
+  search,
+  sortBy,
+  sortOrder,
+  selectedTagIds,
+  displayFiles,
+  displayedSearch,
+  hasMore,
+  cursorLoading,
+  folderLoading,
+  refreshing,
+  listError,
+  loadMoreError,
+  retryLoadMore,
+  loadLimitExceeded,
+  continueLoadMore,
+  beginFolderTransition,
+  getFileListGeneration,
+  loadInitialFiles,
+  scrollSentinel,
+  toggleSort,
+  handleSearch,
+  handleClearSearch,
+  refetchFiles,
+  applyFilters,
+  addTagFilter,
+  removeTagFilter,
+  clearTagFilters,
+  handleTagManagerFilter,
+} = useFileListQuery({ fileStore, folderStore, route, router });
+
+const showUploadModal = ref(false);
+const isDraggedOver = ref(false);
+const markdownResult = ref('');
+const selectedFileIds = ref<string[]>([]);
+const dropFiles = ref<File[]>([]);
+/** 页面级拖拽采集结果（含目录结构），转发给上传弹窗处理，避免双重入队 */
+const dropCollected = ref<DropCollectResult | null>(null);
+const showTagManager = ref(false);
+
+/**
+ * M6 拆分：标签入口文案与已选标签筛选项由宿主计算后传入展示组件，
+ * 使拆出的组件不访问 store（保持可测与解耦）。
+ */
+const tagButtonLabel = computed(() =>
+  (tagStore.tags && tagStore.tags.length > 0) || selectedTagIds.value.length > 0 ? '标签筛选' : '管理标签',
+);
+const filteredTagItems = computed(() =>
+  selectedTagIds.value.map((tagId) => ({ id: tagId, name: getTagName(tagId) })),
+);
+const tagEditorVisible = ref(false);
+const batchTagDialog = reactive({
+  visible: false,
+  selectedTagIds: [] as string[],
+});
+const tagEditorFileId = ref('');
+const tagEditorFileTags = ref<{ id: string; name: string; color: string }[]>([]);
+
+// ============ 文件夹相关状态 ============
+const showCreateFolderDialog = ref(false);
+const showRenameFolderDialog = ref(false);
+const renameTargetFolder = ref<Folder | null>(null);
+const showMoveDialog = ref(false);
+const moveTargetKind = ref<'folder' | 'file'>('file');
+const moveTargetIds = ref<string[]>([]);
+const moveDisabledIds = ref<string[]>([]);
+
+// ============ 分享弹窗状态 ============
+const showShareDialog = ref(false);
+const shareTargetType = ref<'file' | 'folder'>('file');
+const shareTargetId = ref('');
+const shareTargetName = ref('');
+
+// ============ 自定义右键菜单状态 ============
+const ctxMenu = reactive({
+  visible: false,
+  x: 0,
+  y: 0,
+  target: null as CtxTarget | null,
+});
+/** 文件剪贴板：复制（copy）后暂存，粘贴（paste）时生成副本到当前文件夹 */
+const fileClipboard = ref<FileItem[]>([]);
+
+// ============ 文件预览状态 ============
+const mediaPlaybackStore = useMediaPlaybackStore();
+
+/** 打开全局预览会话（由常驻媒体宿主呈现，跨路由/收起不中断播放） */
+function openPreview(file: FileItem) {
+  if (!canPreviewFile(file)) return;
+  const kind = getPreviewKind(file.mimeType, file.originalName);
+  if (!kind) return;
+  const list = buildMediaPlaylist(kind);
+  const index = Math.max(0, list.findIndex((i) => i.id === file.id));
+  mediaPlaybackStore.open({
+    context: { type: 'user', userId: authStore.user?.id },
+    item: list[index] ?? {
+      id: file.id,
+      name: file.originalName,
+      mimeType: file.mimeType,
+      kind,
+      size: file.size,
+      src: buildFilePreviewUrl(file.id),
+      downloadUrl: `/api/files/${file.id}/download`,
+      contentVersion: file.uploadVersion,
+    },
+    playlist: list,
+    playlistIndex: index,
+  });
+}
+
+// ============ 媒体快速预览列表 ============
+/** 当前文件夹已加载且可用的媒体文件，按图片 / 视频 / 音乐分别组成列表。 */
+function buildMediaPlaylist(kind: MediaSessionItem['kind']): MediaSessionItem[] {
+  return fileStore.files
+    .filter((file) => getPreviewKind(file.mimeType, file.originalName) === kind && !file.isDeleted && file.status !== 'processing')
+    .map((file) => ({
+      id: file.id,
+      name: file.originalName,
+      mimeType: file.mimeType,
+      kind,
+      size: file.size,
+      src: buildFilePreviewUrl(file.id),
+      downloadUrl: `/api/files/${file.id}/download`,
+      contentVersion: file.uploadVersion,
+    }));
+}
+// ============ 文件重命名弹窗状态 ============
+const showRenameFileDialog = ref(false);
+const renameTargetFile = ref<FileItem | null>(null);
+
+/**
+ * 用户点击地址栏路径、双击/右键打开文件夹时触发。
+ * 只更新 URL（folder query 参数），状态同步统一由下方 route watch 驱动，
+ * 避免「直接改 store + 改 URL」双写竞态；URL 是当前目录的唯一事实来源。
+ * 保留 search/sortBy/sortOrder/tagIds 等既有 query 参数不丢失。
+ */
+function onFolderNavigate(folderId: string | null) {
+  if (isBatchDeleting.value) return;
+  if (folderId === folderStore.currentFolderId) return; // 已在目标目录，不产生多余历史记录
+  const query = { ...route.query };
+  if (folderId) query.folder = folderId;
+  else delete query.folder; // 根目录对应 /files（不带 folder 参数），保持既有链接兼容
+  router.push({ query });
+}
+
+/**
+ * URL → 目录状态（单向同步，天然支持浏览器前进/后退与 F5 刷新保持）。
+ * 进入/变更路由时读取 folder 参数 → openFolder → 刷新文件列表；
+ * 参数非法（文件夹不存在/无权限）时友好提示并 router.replace 清除参数回退根目录。
+ */
+let folderRouteSynced = false;
+watch(() => route.query.folder, async (raw) => {
+  // 非法参数形态（如 folder=a&folder=b）：直接清除并回退根目录
+  if (raw != null && typeof raw !== 'string') {
+    const query = { ...route.query };
+    delete query.folder;
+    router.replace({ query });
+    return;
+  }
+  const targetId = raw || null;
+  // 已同步则跳过（如 search/sort replace 未改变目录）；首次挂载必须执行初始加载
+  if (folderRouteSynced && targetId === folderStore.currentFolderId) return;
+  folderRouteSynced = true;
+
+  // 必须在 openFolder 前推进代际：目录切换一开始就清空旧列表和选择。
+  selectedFileIds.value = [];
+  const generation = beginFolderTransition();
+  const valid = await folderStore.openFolder(targetId);
+  if (generation !== getFileListGeneration()) return;
+  if (!valid) {
+    MessagePlugin.warning('目标文件夹不存在或无权访问，已回到我的文件');
+    const query = { ...route.query };
+    delete query.folder;
+    router.replace({ query }); // replace 后 watch 以 null 再次触发，完成重置与加载
+    return;
+  }
+  selectedFileIds.value = [];
+  try {
+    await loadInitialFiles(generation, targetId ? targetId : 'root');
+  } catch {
+    // 初始/切换加载失败保留空列表，用户可手动刷新
+  }
+}, { immediate: true });
+
+function openCreateFolderDialog() {
+  showCreateFolderDialog.value = true;
+}
+
+const parentFolderId = computed<string | null>(() =>
+  getParentFolderId(
+    folderStore.tree,
+    folderStore.currentFolderId,
+    folderStore.breadcrumb[folderStore.breadcrumb.length - 1] ?? null,
+  ),
+);
+
+function onFolderOpen(folder: Folder) {
+  onFolderNavigate(folder.id);
+}
+
+function onFolderRename(folder: Folder) {
+  renameTargetFolder.value = folder;
+  showRenameFolderDialog.value = true;
+}
+
+function onFolderMove(folder: Folder) {
+  moveTargetKind.value = 'folder';
+  moveTargetIds.value = [folder.id];
+  moveDisabledIds.value = [folder.id];
+  showMoveDialog.value = true;
+}
+
+function onFolderShare(folder: Folder) {
+  shareTargetType.value = 'folder';
+  shareTargetId.value = folder.id;
+  shareTargetName.value = folder.name;
+  showShareDialog.value = true;
+}
+
+function onFileShare(file: FileItem) {
+  shareTargetType.value = 'file';
+  shareTargetId.value = file.id;
+  shareTargetName.value = file.originalName;
+  showShareDialog.value = true;
+}
+
+// ============ 获取下载链接弹窗状态 ============
+const showDownloadLinkDialog = ref(false);
+const downloadLinkTargetId = ref('');
+const downloadLinkTargetName = ref('');
+
+function onFileDownloadLink(file: FileItem) {
+  downloadLinkTargetId.value = file.id;
+  downloadLinkTargetName.value = file.originalName;
+  showDownloadLinkDialog.value = true;
+}
+
+function openMoveDialogForFiles(fileIds?: string[]) {
+  const ids = fileIds && fileIds.length > 0 ? fileIds : selectedFileIds.value;
+  if (ids.length === 0) {
+    MessagePlugin.warning('请先选择要移动的文件');
+    return;
+  }
+  moveTargetKind.value = 'file';
+  moveTargetIds.value = ids;
+  moveDisabledIds.value = [];
+  showMoveDialog.value = true;
+}
+
+async function onFolderMoved() {
+  refetchFiles();
+  selectedFileIds.value = [];
+}
+
+/** 新建文件夹成功：乐观插入内存树，避免树刷新失败/竞态时新文件夹不显示 */
+function onFolderCreated(folder: Folder) {
+  folderStore.insertIntoTree(folder, folder.parentId);
+}
+
+function onFolderDelete(folder: Folder) {
+  const confirmDialog = DialogPlugin.confirm({
+    header: '删除文件夹',
+    body: `确定删除「${folder.name}」及其所有子文件夹和文件吗？此操作可在 7 天内撤销。`,
+    theme: 'warning',
+    confirmBtn: '删除',
+    cancelBtn: '取消',
+    onConfirm: async () => {
+      try {
+        await folderStore.deleteFolder(folder.id);
+        MessagePlugin.success('文件夹已放入回收站，7 天后永久删除');
+        if (folderStore.currentFolderId === folder.id) {
+          onFolderNavigate(null);
+        }
+      } catch (err: any) {
+        MessagePlugin.error(err?.response?.data?.message || '删除失败');
+      }
+      confirmDialog.destroy();
+    },
+    onClose: () => confirmDialog.destroy(),
+  });
+}
+
+// ============ 自定义右键菜单（桌面右键 / 移动端长按） ============
+function openCtxMenuAt(x: number, y: number, target: CtxTarget) {
+  ctxMenu.target = target;
+  ctxMenu.x = x;
+  ctxMenu.y = y;
+  ctxMenu.visible = true;
+}
+function openFileCtxMenu(e: MouseEvent, file: FileItem) {
+  openCtxMenuAt(e.clientX, e.clientY, { kind: 'file', file });
+}
+function openFolderCtxMenu(e: MouseEvent, folder: Folder) {
+  openCtxMenuAt(e.clientX, e.clientY, { kind: 'folder', folder });
+}
+function openBlankCtxMenu(e: MouseEvent) {
+  openCtxMenuAt(e.clientX, e.clientY, { kind: 'blank' });
+}
+
+// ---- 移动端长按弹出（替代右键） ----
+let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+let longPressFired = false;
+const touchStartPos = { x: 0, y: 0 };
+
+function handleTouchStart(e: TouchEvent, kind: 'file' | 'folder' | 'blank', item?: FileItem | Folder) {
+  if (e.touches.length !== 1) return;
+  const t = e.touches[0];
+  touchStartPos.x = t.clientX;
+  touchStartPos.y = t.clientY;
+  longPressFired = false;
+  if (longPressTimer) clearTimeout(longPressTimer);
+  longPressTimer = setTimeout(() => {
+    longPressFired = true;
+    try { navigator.vibrate?.(10); } catch { /* 部分浏览器不支持震动 */ }
+    if (kind === 'file') openCtxMenuAt(touchStartPos.x, touchStartPos.y, { kind: 'file', file: item as FileItem });
+    else if (kind === 'folder') openCtxMenuAt(touchStartPos.x, touchStartPos.y, { kind: 'folder', folder: item as Folder });
+    else openCtxMenuAt(touchStartPos.x, touchStartPos.y, { kind: 'blank' });
+  }, 550);
+}
+function handleTouchMove(e: TouchEvent) {
+  if (!longPressTimer) return;
+  const t = e.touches[0];
+  if (Math.abs(t.clientX - touchStartPos.x) > 10 || Math.abs(t.clientY - touchStartPos.y) > 10) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+function handleTouchEnd() {
+  if (longPressTimer) {
+    clearTimeout(longPressTimer);
+    longPressTimer = null;
+  }
+}
+/** 长按触发后抑制随后的 click（避免长按打开菜单的同时又触发导航/下载） */
+function consumeLongPressClick(): boolean {
+  if (longPressFired) {
+    longPressFired = false;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * 移动端文件夹行点击（由 FileListMobileList 的 folder-click 事件触发）。
+ * 长按已弹出菜单时必须抑制随后的 click，避免「弹出菜单 + 同时进入目录」；
+ * 该抑制状态（longPressFired）留在宿主，故判定也必须在宿主完成。
+ */
+function onMobileFolderClick(folder: Folder) {
+  if (!consumeLongPressClick()) onFolderOpen(folder);
+}
+
+/** 菜单动作统一分发 */
+async function onCtxAction(action: string, target: CtxTarget | null) {
+  if (!target) return;
+
+  if (target.kind === 'file') {
+    const file = target.file;
+    switch (action) {
+      case 'copy-link': copyLink(file); break;
+      case 'copy-media-link': copyMediaLink(file); break;
+      case 'preview': openPreview(file); break;
+      case 'download': downloadFile(file); break;
+      case 'rename':
+        renameTargetFile.value = file;
+        showRenameFileDialog.value = true;
+        break;
+      case 'copy':
+        fileClipboard.value = [file];
+        MessagePlugin.success(`已复制「${file.originalName}」，在空白处右键/长按可粘贴`);
+        break;
+      case 'move': openMoveDialogForFiles([file.id]); break;
+      case 'tag': openTagEditor(file); break;
+      case 'share': onFileShare(file); break;
+      case 'download-link': onFileDownloadLink(file); break;
+      case 'delete': handleDelete(file); break;
+      // 访问控制（原表格内联列）
+      case 'toggle-access':
+        handleAccessTypeChange(file.id, file.accessType === 'public' ? 'private' : 'public');
+        break;
+      case 'password': openPasswordDialog(file); break;
+      case 'access-count': openAccessCountDialog(file); break;
+      case 'expires': openExpiresDialog(file); break;
+      // 已删除文件的恢复操作
+      case 'restore': handleRestore(file.id); break;
+      case 'force-delete': handleForceDelete(file.id); break;
+    }
+    return;
+  }
+
+  if (target.kind === 'folder') {
+    const folder = target.folder;
+    switch (action) {
+      case 'open': onFolderOpen(folder); break;
+      case 'rename': onFolderRename(folder); break;
+      case 'move': onFolderMove(folder); break;
+      case 'share': onFolderShare(folder); break;
+      case 'delete': onFolderDelete(folder); break;
+    }
+    return;
+  }
+
+  // 空白处
+  if (action === 'new-folder') {
+    openCreateFolderDialog();
+  } else if (action === 'upload') {
+    showUploadModal.value = true;
+  } else if (action === 'paste') {
+    await pasteFiles();
+  }
+}
+
+/** 粘贴：把剪贴板中的文件逐个复制（生成副本）到当前文件夹 */
+async function pasteFiles() {
+  const items = fileClipboard.value;
+  if (items.length === 0) {
+    MessagePlugin.warning('剪贴板为空，请先复制文件');
+    return;
+  }
+  const targetFolderId = folderStore.currentFolderId; // null = 根目录
+  const results = await Promise.allSettled(
+    items.map((f) => fileStore.copyFile(f.id, targetFolderId)),
+  );
+  const failed = results.filter((r) => r.status === 'rejected').length;
+  if (failed === 0) {
+    MessagePlugin.success(`已粘贴 ${items.length} 个文件（生成副本）`);
+  } else {
+    MessagePlugin.warning(`${items.length - failed} 个成功，${failed} 个失败`);
+  }
+  // 粘贴完成后清空剪贴板并刷新列表
+  fileClipboard.value = [];
+  onFolderMoved();
+}
+
+// ============ 当前文件夹下的直接子文件夹（OS 列表文件夹行数据源） ============
+// 搜索修复：按"已生效查询关键词"过滤当前层文件夹名称（大小写不敏感包含匹配），
+// 与文件名搜索语义一致；未提交的输入不改变目录结果，清空搜索后恢复完整列表。
+// 只对当前层切片做只读派生，不修改 folderStore.tree 共享数据。
+const subfoldersInCurrentFolder = computed<Folder[]>(() => {
+  const parentId = folderStore.currentFolderId;
+  const keyword = displayedSearch.value.trim().toLowerCase();
+  const matches = (f: Folder) => !keyword || f.name.toLowerCase().includes(keyword);
+  if (parentId === null) {
+    return folderStore.tree.filter(f => !f.isDeleted && matches(f));
+  }
+  const find = (nodes: Folder[], id: string): Folder | null => {
+    for (const n of nodes) {
+      if (n.id === id) return n;
+      if (n.children?.length) {
+        const found = find(n.children, id);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  const current = find(folderStore.tree, parentId);
+  return (current?.children ?? []).filter(f => !f.isDeleted && matches(f));
+});
+
+// ============ 选择（自定义列表） ============
+function toggleFileSelect(file: FileItem) {
+  if (!isFileActionable(file) || isBatchDeleting.value) return;
+  const idx = selectedFileIds.value.indexOf(file.id);
+  if (idx >= 0) {
+    selectedFileIds.value.splice(idx, 1);
+  } else {
+    selectedFileIds.value.push(file.id);
+  }
+}
+
+/** 当前可被选中的文件（未删除、非处理中） */
+const selectableFiles = computed(() =>
+  displayFiles.value.filter(f => isFileActionable(f))
+);
+
+/**
+ * 选择集合只保留当前视图中仍可操作、可见的文件，避免翻页/筛选后误操作。
+ * G11-06：原 deep watch 会对大列表的每个文件对象做全量深遍历，开销随列表增长线性放大；
+ * 改为浅层监听（仅在 files 引用被替换时触发，如切换目录 / 重新拉取）＋ 在列表替换点显式调用
+ * pruneSelection() 清理。追加加载（appendFiles 不改变引用）不触发清理——新增文件不会使既有选择失效。
+ */
+function pruneSelection() {
+  const visibleIds = new Set(selectableFiles.value.map((file) => file.id));
+  selectedFileIds.value = selectedFileIds.value.filter((id) => visibleIds.has(id));
+}
+
+watch([displayFiles, selectableFiles], pruneSelection);
+
+const isAllSelected = computed(() =>
+  selectableFiles.value.length > 0 &&
+  selectableFiles.value.every(f => selectedFileIds.value.includes(f.id))
+);
+
+const isIndeterminate = computed(() => {
+  const count = selectableFiles.value.filter(f => selectedFileIds.value.includes(f.id)).length;
+  return count > 0 && count < selectableFiles.value.length;
+});
+
+function toggleSelectAll() {
+  if (isBatchDeleting.value) return;
+  if (isAllSelected.value) {
+    const ids = new Set(selectableFiles.value.map(f => f.id));
+    selectedFileIds.value = selectedFileIds.value.filter(id => !ids.has(id));
+  } else {
+    const existing = new Set(selectedFileIds.value);
+    const all = [...selectedFileIds.value];
+    for (const f of selectableFiles.value) {
+      if (!existing.has(f.id)) all.push(f.id);
+    }
+    selectedFileIds.value = all;
+  }
+}
+
+function clearSelection() {
+  selectedFileIds.value = [];
+}
+
+const isAdmin = computed(() => {
+  const role = authStore.user?.role || fileStore.currentUserRole;
+  return role === 'admin' || role === 'super_admin';
+});
+
+const isMobile = useMobile();
+
+watch(() => authStore.user?.role, (role) => {
+  if (role) fileStore.setCurrentUserRole(role);
+}, { immediate: true });
+
+const selectedFileIdSet = computed(() => new Set(selectedFileIds.value));
+
+const selectedImages = computed(() =>
+  displayFiles.value.filter(f =>
+    f.mimeType.startsWith('image/') &&
+    selectedFileIdSet.value.has(f.id) &&
+    !f.isDeleted
+  )
+);
+
+// 行类名与可操作性判定已上移到 utils/file-row-predicates（与列表组件共用）
+
+// 密码弹窗状态
+const passwordDialog = reactive({
+  visible: false,
+  value: '',
+  fileId: '',
+});
+
+// 访问次数限制弹窗状态
+const accessCountDialog = reactive({
+  visible: false,
+  value: -1,
+  fileId: '',
+});
+
+// 限时访问弹窗状态
+const expiresDialog = reactive({
+  visible: false,
+  value: null as number | null,
+  fileId: '',
+});
+
+// 删除确认弹窗
+const isBatchDeleting = ref(false);
+const deleteDialog = reactive({
+  visible: false,
+  fileId: '',
+  fileIds: [] as string[],
+  fileName: '',
+  isBatch: false,
+});
+
+function openDeleteDialog(row: FileItem) {
+  deleteDialog.fileId = row.id;
+  deleteDialog.fileIds = [row.id];
+  deleteDialog.fileName = row.originalName;
+  deleteDialog.isBatch = false;
+  deleteDialog.visible = true;
+}
+
+function openBatchDeleteDialog() {
+  const ids = selectableFiles.value
+    .filter((file) => selectedFileIds.value.includes(file.id))
+    .map((file) => file.id);
+  if (ids.length === 0) {
+    MessagePlugin.warning('没有可删除的文件');
+    return;
+  }
+  deleteDialog.fileId = '';
+  deleteDialog.fileIds = ids;
+  deleteDialog.fileName = '';
+  deleteDialog.isBatch = true;
+  deleteDialog.visible = true;
+}
+
+function openPasswordDialog(row: FileItem) {
+  passwordDialog.fileId = row.id;
+  passwordDialog.value = '';
+  passwordDialog.visible = true;
+}
+
+async function savePassword() {
+  try {
+    await fileStore.setPassword(passwordDialog.fileId, passwordDialog.value);
+    MessagePlugin.success(passwordDialog.value ? '密码已设置' : '密码已移除');
+    passwordDialog.visible = false;
+    refetchFiles();
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error));
+  }
+}
+
+function openAccessCountDialog(row: FileItem) {
+  accessCountDialog.fileId = row.id;
+  accessCountDialog.value = row.maxAccessCount ?? -1;
+  accessCountDialog.visible = true;
+}
+
+async function saveAccessCount() {
+  try {
+    await fileStore.updateAccessCount(accessCountDialog.fileId, accessCountDialog.value);
+    MessagePlugin.success('访问次数限制已更新');
+    accessCountDialog.visible = false;
+    refreshCurrentList();
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error));
+  }
+}
+
+function openExpiresDialog(row: FileItem) {
+  expiresDialog.fileId = row.id;
+  expiresDialog.value = row.expiresIn ?? null;
+  expiresDialog.visible = true;
+}
+
+async function saveExpires() {
+  try {
+    await fileStore.updateExpires(expiresDialog.fileId, expiresDialog.value);
+    MessagePlugin.success('限时访问已更新');
+    expiresDialog.visible = false;
+    refreshCurrentList();
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error));
+  }
+}
+
+/** 刷新文件列表（供访问控制类弹窗保存后复用） */
+function refreshCurrentList() {
+  refetchFiles();
+}
+
+// 限时访问选项
+const expiresOptions = [
+  { label: '永久', value: null },
+  { label: '1 小时', value: 1 },
+  { label: '6 小时', value: 6 },
+  { label: '12 小时', value: 12 },
+  { label: '24 小时', value: 24 },
+  { label: '3 天', value: 72 },
+  { label: '7 天', value: 168 },
+  { label: '30 天', value: 720 },
+];
+
+let dragLeaveTimeout: ReturnType<typeof setTimeout> | null = null;
+let dragCounter = 0;
+
+// ============ 拖拽（上传 + 文件移动） ============
+// 内部文件移动拖拽使用的自定义 MIME 类型（区别于外部文件拖入的 'Files'）
+const INTERNAL_DRAG_MIME = 'application/x-nebula-file-ids';
+// 拖到地址栏「我的文件」表示移动到根目录，用特殊标记区分真实文件夹 ID
+const ROOT_DROP_TARGET = '__root__';
+
+/** 正在被拖动的文件 ID 列表（用于拖动中的视觉反馈） */
+const draggingFileIds = ref<string[]>([]);
+/** 当前悬停的放置目标文件夹 ID（ROOT_DROP_TARGET 表示根目录），用于高亮 */
+const dragOverFolderId = ref<string | null>(null);
+
+function hasExternalFiles(e: DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types || []).includes('Files');
+}
+
+/** 编辑控件保留浏览器原生粘贴行为，不触发页面上传。 */
+function isEditingTarget(target: EventTarget | null): boolean {
+  const element = target instanceof HTMLElement ? target : null;
+  return Boolean(element?.closest('input, textarea, select, [contenteditable="true"]'));
+}
+
+/** Ctrl+V 粘贴上传：只接收剪贴板中的图片和视频，文本/非媒体不拦截。 */
+function handlePagePaste(e: ClipboardEvent) {
+  if (isEditingTarget(e.target)) return;
+  const files = extractPastedMediaFiles(e.clipboardData?.files || []);
+  if (files.length === 0) return;
+
+  e.preventDefault();
+  dropCollected.value = null;
+  dropFiles.value = files;
+  showUploadModal.value = true;
+}
+
+function isInternalFileDrag(e: DragEvent): boolean {
+  return Array.from(e.dataTransfer?.types || []).includes(INTERNAL_DRAG_MIME);
+}
+
+// ---- 页面级：仅响应外部文件拖入（上传），内部移动拖拽由文件夹行自行处理 ----
+function handlePageDragEnter(e: DragEvent) {
+  if (!hasExternalFiles(e)) return;
+  dragCounter++;
+  isDraggedOver.value = true;
+}
+function handlePageDragOver(e: DragEvent) {
+  if (!hasExternalFiles(e)) return;
+  e.preventDefault(); // 允许放置外部文件
+}
+function handlePageDragLeave(e: DragEvent) {
+  if (!hasExternalFiles(e)) return;
+  dragCounter--;
+  if (dragCounter <= 0) {
+    dragCounter = 0;
+    isDraggedOver.value = false;
+  }
+}
+async function handlePageDrop(e: DragEvent) {
+  if (!hasExternalFiles(e)) return;
+  e.preventDefault();
+  dragCounter = 0;
+  isDraggedOver.value = false;
+  if (dragLeaveTimeout) clearTimeout(dragLeaveTimeout);
+  const items = e.dataTransfer?.items;
+  if (items && items.length > 0) {
+    // 采集在 drop 事件内同步启动（保留目录结构），结果转发给弹窗统一处理
+    try {
+      const result = await collectFromDrop(items);
+      if (result.parsed.length > 0 || result.plainFiles.length > 0) {
+        dropFiles.value = [];
+        dropCollected.value = result;
+        showUploadModal.value = true;
+        return;
+      }
+    } catch {
+      // 采集异常：回退原有平铺转发
+    }
+  }
+  const files = Array.from(e.dataTransfer?.files || []);
+  if (files.length > 0) {
+    dropCollected.value = null;
+    dropFiles.value = files;
+    showUploadModal.value = true;
+  }
+}
+
+// ---- 文件行：拖动开始 / 结束 ----
+function onFileDragStart(e: DragEvent, file: FileItem) {
+  if (!isFileActionable(file)) {
+    e.preventDefault();
+    return;
+  }
+  // 若被拖文件已在选中集合中，则一并拖动所有已选文件；否则仅拖动该文件
+  const ids = selectedFileIds.value.includes(file.id)
+    ? [...selectedFileIds.value]
+    : [file.id];
+  e.dataTransfer?.setData(INTERNAL_DRAG_MIME, JSON.stringify(ids));
+  if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+  draggingFileIds.value = ids;
+}
+function onFileDragEnd() {
+  draggingFileIds.value = [];
+  dragOverFolderId.value = null;
+}
+
+// ---- 文件夹行 / 根目录：放置目标 ----
+function onFolderDragOver(e: DragEvent, target: string) {
+  if (!isInternalFileDrag(e)) return;
+  e.preventDefault(); // 允许放置
+  if (e.dataTransfer) e.dataTransfer.dropEffect = 'move';
+  dragOverFolderId.value = target;
+}
+function onFolderDragLeave(e: DragEvent, target: string) {
+  if (!isInternalFileDrag(e)) return;
+  // 仍在本行内部移动（进入子元素）时不清除高亮
+  const current = e.currentTarget as Node | null;
+  const related = e.relatedTarget as Node | null;
+  if (current && related && current.contains(related)) return;
+  if (dragOverFolderId.value === target) dragOverFolderId.value = null;
+}
+function onDropOnFolder(e: DragEvent, target: string) {
+  e.preventDefault();
+  e.stopPropagation();
+  dragOverFolderId.value = null;
+  const raw = e.dataTransfer?.getData(INTERNAL_DRAG_MIME);
+  if (!raw) return;
+  let ids: string[] = [];
+  try {
+    ids = JSON.parse(raw);
+  } catch {
+    return;
+  }
+  if (ids.length === 0) return;
+  const folderId = target === ROOT_DROP_TARGET ? null : target;
+  moveFilesToFolder(ids, folderId);
+}
+
+/** 执行文件移动（并发，单个失败不影响其他），完成后刷新列表 */
+async function moveFilesToFolder(ids: string[], folderId: string | null) {
+  const results = await Promise.allSettled(
+    ids.map((fid) => folderStore.moveFile(fid, folderId)),
+  );
+  const failed = results.filter((r) => r.status === 'rejected').length;
+  if (failed === 0) {
+    MessagePlugin.success(`已移动 ${ids.length} 个文件`);
+  } else {
+    MessagePlugin.warning(`${ids.length - failed} 个成功，${failed} 个失败`);
+  }
+  draggingFileIds.value = [];
+  onFolderMoved(); // 复用既有刷新逻辑（重新拉取列表 + 清空选择）
+}
+
+function getTagName(tagId: string): string {
+  return tagStore.tags.find(t => t.id === tagId)?.name || tagId;
+}
+
+function openTagEditor(file: { id: string; tags?: { id: string; name: string; color: string }[] }) {
+  tagEditorFileId.value = file.id;
+  tagEditorFileTags.value = file.tags || [];
+  tagEditorVisible.value = true;
+}
+
+function onTagSaved() {
+  applyFilters();
+}
+
+function releaseDropPayload() {
+  dropFiles.value = [];
+  dropCollected.value = null;
+}
+
+function handleUploadModalClose() {
+  showUploadModal.value = false;
+  releaseDropPayload();
+}
+
+// 消费全局上传指示器「查看详情」注入的 uploadDialog=1 query：打开上传弹窗后立即清除该参数
+watch(() => route.query.uploadDialog, (val) => {
+  if (val === '1') {
+    showUploadModal.value = true;
+    const query = { ...route.query };
+    delete query.uploadDialog;
+    router.replace({ query });
+  }
+}, { immediate: true });
+
+// 上传刷新采用固定低频节流；后台完全延迟，恢复可见时最多补一次同步。
+let uploadedRefetchTimer: ReturnType<typeof setTimeout> | null = null;
+let needsUploadRefresh = false;
+let needsFolderTreeRefresh = false;
+
+async function flushUploadRefresh() {
+  if (!isPageVisible.value || !needsUploadRefresh) return;
+  needsUploadRefresh = false;
+  const refreshTree = needsFolderTreeRefresh;
+  needsFolderTreeRefresh = false;
+  await refetchFiles();
+  if (refreshTree) await folderStore.fetchTree().catch(() => {});
+}
+
+function onUploaded(folderStructureChanged = false) {
+  selectedFileIds.value = [];
+  needsUploadRefresh = true;
+  needsFolderTreeRefresh ||= folderStructureChanged;
+  if (!isPageVisible.value || uploadedRefetchTimer) return;
+  uploadedRefetchTimer = setTimeout(async () => {
+    uploadedRefetchTimer = null;
+    await flushUploadRefresh();
+  }, 3000);
+}
+
+watch(isPageVisible, (visible) => {
+  if (!visible) {
+    if (uploadedRefetchTimer) clearTimeout(uploadedRefetchTimer);
+    uploadedRefetchTimer = null;
+    return;
+  }
+  flushUploadRefresh();
+});
+
+async function handleAccessTypeChange(id: string, accessType: string) {
+  try {
+    await fileStore.updateAccessType(id, accessType);
+    MessagePlugin.success('更新成功');
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error));
+  }
+}
+
+async function copyLink(row: FileItem) {
+  try {
+    const link = `${window.location.origin}/files/public/${row.id}`;
+    await navigator.clipboard.writeText(link);
+    if (row.accessType === 'private') {
+      MessagePlugin.warning('链接已复制，但该文件为私有，仅你自己可访问；如需分享给他人请使用「分享」功能');
+    } else {
+      MessagePlugin.success('分享链接已复制');
+    }
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error));
+  }
+}
+
+async function copyMediaLink(row: FileItem) {
+  if (!isMediaDirectLinkKind(getPreviewKind(row.mimeType, row.originalName))) {
+    MessagePlugin.warning('仅图片、音频和视频支持媒体直链');
+    return;
+  }
+  if (row.accessType !== 'public' || row.hasPassword || row.maxAccessCount > 0 || row.expiresIn != null) {
+    MessagePlugin.warning('媒体直链仅适用于公开且无密码、次数或时效限制的文件');
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(`${window.location.origin}/media/${row.id}`);
+    MessagePlugin.success('媒体直链已复制');
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error));
+  }
+}
+
+async function downloadFile(row: FileItem) {
+  // 两阶段下载：先创建下载任务获得真实的资源可用性/排队原因，
+  // 服务器资源可用时立即触发浏览器原生下载；繁忙时进入排队并由全局指示器展示进度与取消。
+  try {
+    await downloads.requestDownload({ fileId: row.id, fileName: row.originalName });
+  } catch (error: unknown) {
+    MessagePlugin.error(getDownloadErrorMessage(error) ?? getErrorMessage(error));
+  }
+}
+
+function handleDelete(row: FileItem) {
+  openDeleteDialog(row);
+}
+
+async function confirmDelete() {
+  if (isBatchDeleting.value) return;
+  if (!deleteDialog.isBatch) {
+    try {
+      const result = await fileStore.deleteFile(deleteDialog.fileId);
+      if (result.status === 'permanently_deleted') {
+        MessagePlugin.success('文件已永久删除');
+      } else if (result.status === 'already_deleted') {
+        const scheduledDate = result.scheduledAt ? formatDate(result.scheduledAt) : '7天后';
+        MessagePlugin.warning(`文件已处于待删除状态，将于 ${scheduledDate} 永久删除`);
+      } else {
+        const scheduledDate = result.scheduledAt ? formatDate(result.scheduledAt) : '7天后';
+        MessagePlugin.success(`文件已标记为待删除，将于 ${scheduledDate} 永久删除，期间可恢复`);
+      }
+      deleteDialog.visible = false;
+      await refetchFiles();
+    } catch (error: unknown) {
+      MessagePlugin.error(getErrorMessage(error));
+    }
+    return;
+  }
+
+  const ids = [...deleteDialog.fileIds];
+  isBatchDeleting.value = true;
+  try {
+    const results = await Promise.allSettled(ids.map((id) => fileStore.deleteFile(id)));
+    const successCount = results.filter((result) => result.status === 'fulfilled').length;
+    const failCount = results.length - successCount;
+    const failedIds = ids.filter((_, index) => results[index]?.status === 'rejected');
+    const statusCounts = results.reduce((counts, result) => {
+      if (result.status === 'fulfilled') counts[result.value.status] = (counts[result.value.status] || 0) + 1;
+      return counts;
+    }, {} as Record<string, number>);
+    deleteDialog.visible = false;
+    // 成功项退出选择，失败项保留，方便用户查看并重试。
+    selectedFileIds.value = selectedFileIds.value.filter((id) => failedIds.includes(id));
+    await refetchFiles();
+    const statusSummary = [
+      statusCounts.pending ? `${statusCounts.pending} 个进入回收站` : '',
+      statusCounts.already_deleted ? `${statusCounts.already_deleted} 个已在回收站` : '',
+      statusCounts.permanently_deleted ? `${statusCounts.permanently_deleted} 个已永久删除` : '',
+    ].filter(Boolean).join('，');
+    if (failCount === 0) {
+      MessagePlugin.success(statusSummary || `已处理 ${successCount} 个文件`);
+    } else {
+      MessagePlugin.warning(`批量删除完成：${statusSummary || `${successCount} 个成功`}，${failCount} 个失败`);
+    }
+  } finally {
+    isBatchDeleting.value = false;
+  }
+}
+
+async function handleRestore(id: string) {
+  try {
+    await fileStore.restoreFile(id);
+    MessagePlugin.success('文件已恢复');
+    await refetchFiles();
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error));
+  }
+}
+
+/** 计算距可自助永久删除的剩余秒数；不可判定时返回 Infinity */
+function selfForceDeleteRemainingSeconds(file: FileItem | undefined): number {
+  if (!file?.deleteRequestedAt) return Number.POSITIVE_INFINITY;
+  const elapsed = Date.now() - new Date(file.deleteRequestedAt).getTime();
+  return Math.ceil((FORCE_DELETE_WAIT_MS - elapsed) / 1000);
+}
+
+/** 强制删除（永久删除）——必须二次确认，防止误删不可恢复的数据 */
+function handleForceDelete(id: string) {
+  // 定位文件以在确认文案中展示文件名（优先当前列表，其次全部已加载文件）
+  const file = displayFiles.value.find((f) => f.id === id)
+    || fileStore.files.find((f) => f.id === id);
+  const fileName = file?.originalName || id;
+
+  // 非管理员在冷静期内给出剩余等待提示，避免无效请求
+  const remaining = selfForceDeleteRemainingSeconds(file);
+  const waitHint = !isAdmin && remaining > 0
+    ? `\n冷静期剩余约 ${remaining >= 60 ? `${Math.ceil(remaining / 60)} 分钟` : `${remaining} 秒`}，期间无法永久删除。`
+    : '';
+
+  const confirmDialog = DialogPlugin.confirm({
+    header: '强制删除文件',
+    body: `确定要永久删除「${fileName}」吗？此操作不可恢复。${waitHint}`,
+    theme: 'danger',
+    confirmBtn: '永久删除',
+    cancelBtn: '取消',
+    // onConfirm 返回 Promise 时，TDesign 会禁用确认按钮直至完成，天然防重复提交
+    onConfirm: async () => {
+      try {
+        await fileStore.forceDeleteFile(id);
+        MessagePlugin.success('文件已永久删除');
+      } catch (error: unknown) {
+        MessagePlugin.error(getErrorMessage(error));
+      }
+      confirmDialog.destroy();
+    },
+    onClose: () => confirmDialog.destroy(),
+  });
+}
+
+function convertToMarkdown() {
+  if (selectedImages.value.length === 0) {
+    MessagePlugin.warning('请先选择图片文件');
+    return;
+  }
+  const unavailable = selectedImages.value.filter(img =>
+    img.accessType !== 'public' || img.hasPassword || img.maxAccessCount > 0 || img.expiresIn != null
+  );
+  if (unavailable.length > 0) {
+    MessagePlugin.warning('媒体直链仅适用于公开且无密码、次数或时效限制的图片');
+    return;
+  }
+  const baseUrl = window.location.origin;
+  markdownResult.value = selectedImages.value
+    .map((img) => `![${img.originalName}](${baseUrl}/media/${img.id})`)
+    .join('\n');
+}
+
+/**
+ * 统一剪贴板写入（G11-10）：await + catch + 失败提示，避免未捕获 Promise 拒绝。
+ */
+async function writeClipboard(text: string, successMsg: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    MessagePlugin.success(successMsg);
+    return true;
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error));
+    return false;
+  }
+}
+
+/** 复制 Markdown 结果（G11-10：await + catch + 失败提示） */
+async function copyMarkdown() {
+  await writeClipboard(markdownResult.value, '已复制到剪贴板');
+}
+
+/** 批量复制下载链接（G11-10 + G11-11：await/catch + 私有文件检测统计） */
+async function copyDownloadLinks() {
+  const files = displayFiles.value.filter(f => selectedFileIds.value.includes(f.id) && !f.isDeleted);
+  if (files.length === 0) {
+    MessagePlugin.warning('没有可复制的文件');
+    return;
+  }
+  const baseUrl = window.location.origin;
+  const links = files.map(f => `${baseUrl}/files/public/${f.id}`).join('\n');
+  // G11-11：统计私有文件数量并提示——私有文件链接仅本人可访问，复制后可能产生无效分享链接。
+  const privateCount = files.filter(f => f.accessType === 'private').length;
+  const ok = await writeClipboard(links, `已复制 ${files.length} 个下载链接`);
+  if (ok && privateCount > 0) {
+    MessagePlugin.warning(
+      `其中 ${privateCount} 个为私有文件，链接仅你自己可访问；如需分享请使用「分享」功能`,
+    );
+  }
+}
+
+function openBatchTagDialog() {
+  batchTagDialog.selectedTagIds = [];
+  batchTagDialog.visible = true;
+}
+
+function toggleBatchTag(tagId: string) {
+  const idx = batchTagDialog.selectedTagIds.indexOf(tagId);
+  if (idx >= 0) {
+    batchTagDialog.selectedTagIds.splice(idx, 1);
+  } else {
+    batchTagDialog.selectedTagIds.push(tagId);
+  }
+}
+
+async function confirmBatchTags() {
+  const fileIds = selectedFileIds.value.filter(id =>
+    displayFiles.value.find(f => f.id === id && !f.isDeleted)
+  );
+  if (fileIds.length === 0) {
+    MessagePlugin.warning('没有可添加标签的文件');
+    return;
+  }
+  const results = await Promise.allSettled(
+    fileIds.map(fileId => api.put(`/files/${fileId}/tags`, { tagIds: batchTagDialog.selectedTagIds })),
+  );
+  const successCount = results.filter(r => r.status === 'fulfilled').length;
+  const failCount = results.length - successCount;
+  batchTagDialog.visible = false;
+  if (failCount === 0) {
+    MessagePlugin.success(`已为 ${successCount} 个文件添加标签`);
+  } else {
+    MessagePlugin.warning(`完成: ${successCount} 成功, ${failCount} 失败`);
+  }
+  applyFilters();
+}
+
+onMounted(async () => {
+  try { await tagStore.fetchTags(); } catch { /* 标签加载失败不阻塞页面 */ }
+  try { await folderStore.fetchTree(); } catch { /* 文件夹树加载失败不阻塞页面 */ }
+  // 文件列表初始加载由上方 route.query.folder watch（immediate）驱动，此处不重复加载
+});
+
+onUnmounted(() => {
+  if (dragLeaveTimeout) { clearTimeout(dragLeaveTimeout); dragLeaveTimeout = null; }
+  if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+  if (uploadedRefetchTimer) { clearTimeout(uploadedRefetchTimer); uploadedRefetchTimer = null; }
+  dragCounter = 0;
+});
+</script>
+
+<!-- 跨拆出组件的共享规则（长按抑制 / .os-muted / .deleted-name） -->
+<style scoped src="./file-list-shared.css"></style>
+
+<style scoped>
+.filelist-page {
+  position: relative;
+}
+
+/* 地址栏 / 工具栏 / 批量操作栏 / 标签筛选 / Markdown 结果区样式
+   已随 FileListAddressBar.vue、FileListToolbar.vue、FileListBatchActions.vue 迁移（M6 拆分） */
+
+/* ============ 空状态 ============ */
+.empty-upload-icon {
+  font-size: 48px;
+  color: var(--text-tertiary);
+  margin-bottom: 16px;
+}
+
+.empty-upload-hint {
+  color: var(--text-secondary);
+  margin-top: 8px;
+}
+
+.fl-loading {
+  display: flex;
+  justify-content: center;
+  padding: 48px 0;
+}
+
+/* ============ OS 风格统一列表 ============ */
+.os-list {
+  padding: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+/* G11-12：搜索/排序重拉时的半透明覆盖层，保留旧列表不闪空 */
+.os-refresh-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: color-mix(in srgb, var(--bg-container, #0f1420) 72%, transparent);
+  backdrop-filter: blur(1px);
+  pointer-events: none;
+}
+
+.os-list-scroll {
+  overflow-x: auto;
+}
+
+.os-list-inner {
+  min-width: 0;
+}
+
+/* 行（表头 / 文件夹行 / 文件行）、拖拽反馈、单元格与行状态样式
+   已随 FileListDesktopRows.vue 迁移；长按抑制与 .os-muted / .deleted-name
+   为跨组件共享规则，见 file-list-shared.css。 */
+
+/* 无限滚动哨兵 */
+.os-sentinel {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 12px 0;
+  border-bottom: none;
+  gap: 8px;
+}
+
+.os-sentinel-more {
+  margin-left: 4px;
+}
+
+/* 移动端列表（.os-mobile / .mobile-*）样式已随 FileListMobileList.vue 迁移（M6 拆分） */
+
+/* ============ 分页 ============ */
+.fl-pagination {
+  margin-top: 16px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+}
+
+.fl-pagesize {
+  width: 130px;
+}
+
+/* ============ 拖拽覆盖层 ============ */
+.drop-overlay {
+  position: absolute;
+  inset: 0;
+  background: var(--color-accent-soft);
+  border: 3px dashed var(--color-accent);
+  border-radius: var(--radius-lg);
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(8px);
+}
+
+.drop-overlay-content {
+  text-align: center;
+  color: var(--color-accent);
+}
+
+.drop-overlay-icon {
+  font-size: 64px;
+  margin-bottom: 16px;
+}
+
+.drop-overlay-content h2 {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 600;
+}
+
+/* ============ 弹窗内辅助样式 ============ */
+.fl-dialog-hint {
+  margin-top: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.fl-delete-body {
+  line-height: 1.8;
+}
+
+.fl-delete-note {
+  margin-top: 12px;
+  padding: 12px;
+  background: var(--color-bg-elevated);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.fl-delete-note-title {
+  margin-bottom: 8px;
+}
+
+.fl-delete-note ul {
+  margin: 0;
+  padding-left: 20px;
+}
+
+.fl-batch-tags {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fl-batch-tag {
+  cursor: pointer;
+}
+
+/* 缩略图可点击预览与键盘焦点可见性（.os-thumb-click / .os-row:focus-visible /
+   .os-tag-click:focus-visible）已随 FileListDesktopRows.vue 迁移（M6 拆分） */
+
+/* 响应式：地址栏 / 工具栏 / 移动端返回按钮的窄屏规则已随各自组件迁移（M6 拆分） */
+</style>

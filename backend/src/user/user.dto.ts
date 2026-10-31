@@ -1,0 +1,38 @@
+import { IsEmail, IsString, MinLength, MaxLength, IsOptional, IsEnum, IsBoolean } from 'class-validator';
+import { UserRole } from '../common/entities/user.entity';
+
+export class CreateUserDto {
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  @MaxLength(255, { message: '邮箱地址过长' })
+  email: string;
+
+  @IsString()
+  @MinLength(6, { message: '密码至少6位' })
+  @MaxLength(128, { message: '密码最多128位' })
+  password: string;
+
+  @IsOptional()
+  @IsEnum([UserRole.ADMIN, UserRole.USER], { message: '角色无效' })
+  role?: UserRole;
+}
+
+export class UpdateRoleDto {
+  @IsEnum(UserRole, { message: '角色无效' })
+  role: UserRole;
+}
+
+export class BanUserDto {
+  @IsBoolean()
+  isBanned: boolean;
+}
+
+export class ChangePasswordDto {
+  @IsString()
+  @MaxLength(128, { message: '原密码过长' })
+  oldPassword: string;
+
+  @IsString()
+  @MinLength(6, { message: '新密码至少6位' })
+  @MaxLength(128, { message: '新密码最多128位' })
+  newPassword: string;
+}

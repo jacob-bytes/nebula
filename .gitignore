@@ -1,0 +1,94 @@
+# Dependencies
+backend/node_modules/
+frontend/node_modules/
+backend/dist/
+frontend/dist/
+
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Environment variables
+**/.env*
+!.env.example
+
+# IDE
+.vscode/
+.codebuddy/*
+
+.idea/
+*.swp
+*.swo
+*~
+.learnings/
+CODEBUDDY.md
+.qder/
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+backend/tmp/
+
+# Build outputs
+build/
+dist/
+telegram-bot-api/build-review/
+backend/.tmp-meta-check/
+*.tsbuildinfo
+*.js.map
+*.map
+
+# Temporary files
+.tmp/
+*.tmp
+*.temp
+.cache/
+
+# Database
+*.sqlite
+*.sqlite3
+
+# Uploads
+backend/uploads/
+uploads/
+
+# PM2
+backend/ecosystem.config.js
+.ecosystem.config.js
+
+# Secrets & Certificates
+# 发布验证公钥是唯一例外：必须随仓库与发行包分发（私钥只存在于 CI secret）。
+*.pem
+!scripts/release/update-public-key.pem
+*.key
+*.crt
+*.cert
+*.p12
+*.pfx
+*credentials*.json
+secrets/
+STATIC_REVIEW_RETROSPECTIVE.md
+DEADLOCK_STATIC_REVIEW.md
+.qoder/*
+# GitHub 工作流必须入库（Release 流水线依赖）；忽略 .github 其他本地内容
+.github/*
+!.github/workflows/
+.workbuddy/*
+# 本地正式发行产物（按 .Releases/v<版本>/ 独立存放）
+.Releases/
+deliverables/
+# 独立实验副本（账号池验证等，见 beta/account-pool-lab/README.md）
+# 仅用于隔离实验，避免副本污染 git status；如需把实验台纳入版本管理，请删除本行并在 beta/ 内自行 git init。
+# 发布构建脚本已显式排除 beta/（scripts/build-linux-x64-release.sh 的 rsync --exclude 'beta'），
+# 发行包不会包含实验副本；validate-release.sh 亦会断言包内不含 beta/ 路径。
+beta/
+# 依赖安装缓存（工作区内本地化，避免写入用户主目录）
+.npm-cache/
+.npm-logs/

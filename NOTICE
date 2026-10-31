@@ -1,0 +1,32 @@
+Nebula（星云盘）
+Copyright (C) 2026 Nebula contributors
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+
+---
+
+## 上游来源与版权归属
+
+本仓库是以下项目的衍生作品：
+
+- 项目：TGTC（文件分发系统） https://github.com/lappland22233/tgtc
+- 衍生基线版本：v1.6.3
+- 上游版权：Copyright (C) TGTC authors，以 GNU GPL v3.0 发布（见 LICENSE）
+
+依据 GPL-3.0，本衍生作品继续以 GPL-3.0 发布。上游的版权声明与许可声明
+不得移除。对本仓库的修改内容同样受 GPL-3.0 约束。
+
+## 第三方组件许可
+
+| 组件 | 位置 | 许可 |
+|---|---|---|
+| telegram-bot-api（含流式文件端点改造） | `telegram-bot-api/` | Boost Software License 1.0（宽松许可，可独立商用） |
+| NestJS / Vue / TypeORM / Redis 客户端等 | 依赖清单见各 `package.json` | 各自原始许可（MIT / Apache-2.0 等） |
+
+## 修改记录
+
+本仓库相对上游的修改均记录在 [CHANGELOG.md](CHANGELOG.md)。按照 GPL-3.0
+对衍生作品的要求，对外分发二进制时须同时提供本仓库对应版本的完整源码。

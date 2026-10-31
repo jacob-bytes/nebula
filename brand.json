@@ -1,0 +1,11 @@
+{
+  "$comment": "品牌唯一事实源。改这里，然后执行 node scripts/rename-brand.mjs 会同步改写后端/前端常量与全仓标识。",
+  "slug": "nebula",
+  "nameZh": "星云盘",
+  "nameEn": "Nebula",
+  "previous": {
+    "slug": "tgtc",
+    "nameZh": "文件分发系统",
+    "nameEn": ""
+  }
+}

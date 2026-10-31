@@ -1,0 +1,244 @@
+import axios, { type AxiosInstance, type AxiosError, type InternalAxiosRequestConfig } from 'axios';
+import MessagePlugin from '../utils/message';
+import { classifyServiceAvailabilityError, getApiErrorDetails } from '../utils/error';
+import { readCookie, XSRF_COOKIE_NAME, XSRF_HEADER_NAME } from '../utils/xsrf';
+import { BRAND_ERROR_CODE_HEADER } from '../brand';
+
+// ---- 状态机：防止并发 401 重定向 ----
+let isRedirecting = false;
+let redirectTimer: ReturnType<typeof setTimeout> | null = null;
+let lastAvailabilityNotice = '';
+let lastAvailabilityNoticeAt = 0;
+
+const AVAILABILITY_NOTICE_DEDUPE_MS = 5000;
+
+/** 全局基础设施故障提示；短时间并发失败只显示一次，避免 toast 风暴。 */
+function showAvailabilityNotice(message: string) {
+  const now = Date.now();
+  if (message === lastAvailabilityNotice && now - lastAvailabilityNoticeAt < AVAILABILITY_NOTICE_DEDUPE_MS) {
+    return;
+  }
+  lastAvailabilityNotice = message;
+  lastAvailabilityNoticeAt = now;
+  MessagePlugin.error({ content: message, duration: 8000, closeBtn: true });
+}
+
+function resetRedirectState() {
+  isRedirecting = false;
+  if (redirectTimer) {
+    clearTimeout(redirectTimer);
+    redirectTimer = null;
+  }
+}
+
+async function startRedirect() {
+  // 防止多次触发
+  if (isRedirecting) {
+    return;
+  }
+  isRedirecting = true;
+  redirectTimer = setTimeout(async () => {
+    try {
+      if (!isAuthPage()) {
+        // 1) 先清空登录态：401 表示服务端会话已失效，本地 user 必须一并清空，
+        //    否则 /login 的 guest 守卫会把“仍视为已登录”的用户弹回 '/'，形成重定向循环。
+        //    动态 import 避免 client ↔ auth 循环依赖。
+        const authModule = await import('../stores/auth');
+        const authStore = authModule.useAuthStore();
+        authStore.user = null;
+        authStore.initialized = true;
+
+        // 2) 携带 redirect 跳转登录页：redirect 取当前路由 path+query 并校验合法性，
+        //    登录成功后据此回跳原页面。redirect 参数本身（若存在）被排除，避免嵌套。
+        const { default: router, isValidRedirect } = await import('../router');
+        const redirect = buildRedirectParam();
+        router.push({
+          path: '/login',
+          query: redirect && isValidRedirect(redirect) ? { redirect } : undefined,
+        });
+      }
+      // 已在 /login 等免重定向页面（登录/注册/密码重置/公开分享页）：不重复跳转（边界处理）
+    } finally {
+      resetRedirectState();
+    }
+  }, 300);
+}
+
+/**
+ * 构造当前页面的回跳参数（path + query）。
+ * 排除游客页 / 根路径 / 分享页（这些页面无需回跳），并排除自身 redirect 参数避免嵌套。
+ */
+function buildRedirectParam(): string | undefined {
+  try {
+    const path = window.location.pathname;
+    if (path === '/' || path === '/login' || path === '/register' || path === '/reset-password' || path.startsWith('/s/')) {
+      return undefined;
+    }
+    const url = new URL(window.location.href);
+    url.searchParams.delete('redirect');
+    const full = url.pathname + url.search;
+    return full.startsWith('/') ? full : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** 判断当前是否在无需 401 重定向的页面（登录/注册/密码重置/公开分享页） */
+function isAuthPage(): boolean {
+  const path = window.location.pathname;
+  // 公开分享页 /s/:token 为匿名访问场景：分享接口返回 401（如密码错误/链接受限）时，
+  // 不应把匿名访客强制跳转到登录页，故一并排除。
+  return (
+    path === '/login' ||
+    path === '/register' ||
+    path === '/reset-password' ||
+    path.startsWith('/s/')
+  );
+}
+
+// 查询是否正在重定向
+export function isRedirectInProgress(): boolean {
+  return isRedirecting;
+}
+
+// 恢复 redirect 状态（登录成功后调用）
+export function clearRedirectState() {
+  resetRedirectState();
+}
+
+// ---- 创建 axios 实例 ----
+const client: AxiosInstance = axios.create({
+  baseURL: '/api',
+  // 默认 30 秒超时。文件上传请求应在调用处覆盖 timeout: 0
+  // （使用后端 HTTP 服务器 10 分钟超时），避免大文件上传被中断
+  timeout: 30000,
+  withCredentials: true,
+  // CSRF 双重提交 Cookie（Double-Submit Cookie）配置：
+  // axios 会在发起请求时读取名为 XSRF-TOKEN 的 cookie，并自动写入 X-XSRF-TOKEN 请求头。
+  // 后端已在登录/注册会话建立时下发非 httpOnly 的 XSRF-TOKEN Cookie，并由全局 CsrfGuard
+  // 对所有状态变更方法校验「同源 + 请求头与 Cookie 一致」。
+  // 容错：cookie 不存在时（如匿名公开分享页、Bearer/API Key 调用）不注入请求头、也不报错。
+  xsrfCookieName: XSRF_COOKIE_NAME,
+  xsrfHeaderName: XSRF_HEADER_NAME,
+  // 不设置 Content-Type，由 axios 根据请求数据类型自动推断：
+  // - 普通对象 → application/json
+  // - FormData → multipart/form-data（浏览器自动设置 boundary）
+});
+
+// ---- 请求拦截器 ----
+client.interceptors.request.use(
+  (config: InternalAxiosRequestConfig) => {
+    // Cookie 由 axios withCredentials 自动携带，无需手动添加 Authorization header。
+    // CSRF 防护（双重提交 Cookie）：读取后端下发的 XSRF-TOKEN cookie 并注入 X-XSRF-TOKEN 请求头。
+    // 容错——cookie 不存在时不注入请求头、也不报错（公开分享页/非浏览器调用场景）。
+    // 原生 fetch 调用点（不经过本实例）复用 `utils/xsrf.ts` 的同一份读取逻辑，避免两处实现漂移。
+    const headers = config.headers;
+    if (headers && !headers.has(XSRF_HEADER_NAME)) {
+      const xsrfToken = readCookie(XSRF_COOKIE_NAME);
+      if (xsrfToken) {
+        headers.set(XSRF_HEADER_NAME, xsrfToken);
+      }
+    }
+    return config;
+  },
+  (error: AxiosError) => {
+    return Promise.reject(error);
+  },
+);
+
+// ---- 响应拦截器 ----
+client.interceptors.response.use(
+  (response) => {
+    // 业务码校验（G10-04）：统一判断 data.code，非 0 视为业务失败并 reject。
+    // 向后兼容：仅当响应体存在 code 字段且其值非 0 时才 reject；
+    // 不含 code 字段的响应（如流式/下载、未包装的原始返回）原样放行。
+    const body = response.data as { code?: unknown; message?: string; data?: unknown } | undefined;
+    if (body && typeof body === 'object' && 'code' in body && body.code !== 0) {
+      const message = typeof body.message === 'string' && body.message
+        ? body.message
+        : '请求处理失败，请稍后重试';
+      console.warn(`[API] 业务码错误 code=${String(body.code)}:`, message, response.config?.url);
+      return Promise.reject(new Error(message));
+    }
+    return response;
+  },
+  (error: AxiosError) => {
+    const status = error.response?.status;
+
+    // 需要跨页面一致展示的基础设施故障：低磁盘统一使用 507；服务维护/退出使用 503。
+    // 将 AxiosError 映射为普通 Error，使所有调用 getErrorMessage 的页面得到同一文案。
+    const availabilityError = classifyServiceAvailabilityError(error);
+    if (availabilityError) {
+      console.warn(`[API] ${availabilityError.kind}:`, status, error.config?.url);
+      showAvailabilityNotice(availabilityError.message);
+      // 保留 cause 供调试/分类使用（如上传合并轮询需要区分暂时故障与业务失败）；
+      // 不保留 response，避免消费方误将其当作普通 HTTP 业务错误。
+      return Promise.reject(Object.assign(new Error(availabilityError.message), { cause: error }));
+    }
+
+    // 携带结构化业务码的响应（例如上传排队 429）必须保留原 AxiosError：少数代理会改写
+    // content-type，若被下面的 CDN 分支转成裸 Error，调用方就再也拿不到 response/errorCode，
+    // 排队等待会退化为普通瞬时重试。无业务码的 CDN 错误页仍照旧转换。
+    const structuredCode = getApiErrorDetails(error).code;
+    const hasStructuredCode = (typeof structuredCode === 'string' && structuredCode.length > 0)
+      || !!error.response?.headers?.[BRAND_ERROR_CODE_HEADER];
+
+    // Cloudflare 代理层错误（413 请求体过大 / 502 网关不可用 / 5xx 源站错误）
+    // 检测非 JSON 响应（Cloudflare HTML 错误页）
+    if (status && status >= 400 && error.response?.data && !hasStructuredCode) {
+      const contentType = error.response.headers?.['content-type']?.toString() || '';
+      if (!contentType.includes('application/json')) {
+        // 注意：此处仅识别 Cloudflare 非 JSON 错误页并给出友好提示，并未实现自动重试，
+        // 文案如实表述为“请稍后重试”，避免误导用户以为正在自动恢复。
+        const cloudflareMsg = status === 413
+          ? '文件过大（超过代理层 100MB 限制），请使用 80MB 以内的文件'
+          : status === 502
+            ? '上传超时（CDN 代理层 100 秒限制），请稍后重试'
+            : status === 520 || status === 521 || status === 522 || status === 523 || status === 524
+              ? '源站暂时不可用，请稍后重试'
+              : `CDN 代理层错误 (${status})，请稍后重试`;
+        return Promise.reject(Object.assign(new Error(cloudflareMsg), { cause: error }));
+      }
+    }
+
+    // 401 处理：防抖跳转登录页
+    if (status === 401) {
+      if (!isAuthPage() && !isRedirecting) {
+        startRedirect();
+      }
+      return Promise.reject(error);
+    }
+
+    // 403 处理
+    if (status === 403) {
+      console.warn('[API] 无权访问此资源', error.config?.url);
+      return Promise.reject(error);
+    }
+
+    // 410 Gone：分享链接已失效/过期/取消（Phase 2 新增）
+    // 业务码由 ShareService 在分享不可用时抛 NotFoundException 返回，
+    // 这里仅做友好的错误消息提取，具体 UI 由调用方展示
+    if (status === 410) {
+      const data = error.response?.data as { message?: string; code?: number } | undefined;
+      const msg = data?.message || '此分享链接已失效';
+      console.warn('[API] 分享链接已失效:', msg, error.config?.url);
+      return Promise.reject(new Error(msg));
+    }
+
+    // 网络错误（无响应）
+    if (!error.response) {
+      console.warn('[API] 网络错误，请检查网络连接:', error.message || '未知错误');
+      return Promise.reject(error);
+    }
+
+    // 服务器错误 (5xx)
+    if (status && status >= 500) {
+      console.warn('[API] 服务器错误，请稍后重试:', status, error.config?.url);
+      return Promise.reject(error);
+    }
+
+    return Promise.reject(error);
+  },
+);
+
+export default client;

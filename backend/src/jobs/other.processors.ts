@@ -1,0 +1,315 @@
+import { Injectable, Logger } from '@nestjs/common';
+import { Process, Processor } from '@nestjs/bull';
+import { DataSource } from 'typeorm';
+import { Job } from 'bull';
+import { QUEUE_NAMES } from './bull-queue.module';
+import { AlertEngineService } from '../alert/alert-engine.service';
+import { AggregatedMetrics } from '../alert/alert.rules';
+import { AlertGateway } from '../alert/alert.gateway';
+import { BehaviorAnalyzer } from '../security/behavior-analyzer.service';
+import { databaseCast, databaseQuery, getDatabaseType } from '../database/database-types';
+
+/**
+ * 预聚合追赶期：`aggregate-1min` 与 `evaluate-alerts` 都是每分钟触发、都按
+ * `(now - 60s)` 截断到分钟取同一个窗口，因此评估可能先于聚合并发完成。
+ * 窗口年龄不超过该阈值时视为「聚合还在追赶」，保留重试；
+ * 超过后仍无预聚合行，则需按 access_logs 判定是真空闲还是聚合缺口。
+ */
+const AGGREGATION_CATCHUP_MS = 5 * 60 * 1000;
+
+@Injectable()
+@Processor(QUEUE_NAMES.ALERT_EVALUATION)
+export class AlertEvaluationProcessor {
+  private readonly logger = new Logger(AlertEvaluationProcessor.name);
+
+  constructor(
+    private dataSource: DataSource,
+    private alertEngine: AlertEngineService,
+    private alertGateway: AlertGateway,
+  ) {}
+
+  /** 每 1 分钟评估告警规则 */
+  // PERF-B-107：显式 concurrency:1（与 Bull 隐式默认一致，仅显性化，行为不变）
+  @Process({ name: 'evaluate-alerts', concurrency: 1 })
+  async evaluateAlerts(job: Job<{ windowTime?: string }>): Promise<void> {
+    try {
+      // 从预聚合表读取最近 1 分钟的指标
+      // 使用 UTC 时间截断到分钟，与 metrics-aggregation 处理器写入窗口保持一致；
+      // 若用本地时间截断，非 UTC 部署时永远查不到预聚合窗口，告警系统会静默失效。
+      // 显式窗口锚点与聚合任务语义一致：先减一分钟，再截断到分钟。
+      const now = job.data?.windowTime
+        ? new Date(new Date(job.data.windowTime).getTime() - 60 * 1000)
+        : new Date(Date.now() - 60 * 1000);
+      const windowTime = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth(),
+        now.getUTCDate(),
+        now.getUTCHours(),
+        now.getUTCMinutes(),
+        0,
+        0,
+      ));
+
+      const [metrics] = await databaseQuery<AggregatedMetrics[]>(
+        this.dataSource,
+        `SELECT "totalRequests", "qpsAvg", "error5xxCount", "error4xxCount",
+                "totalBandwidth", "p95Duration", "uniqueIps"
+         FROM "access_log_metrics_1min"
+         WHERE "windowTime" = $1`,
+        [windowTime],
+        getDatabaseType(),
+      );
+
+      if (!metrics) {
+        // G3-16：预聚合缺失时静默 return 会漏报告警，因此保留 warn + throw 触发 Bull 重试。
+        // 但聚合只在「该分钟有请求」时落行（见 MetricsAggregationProcessor），
+        // 无流量分钟必然查不到窗口；原实现对此同样 warn + 重试（attempts=3），
+        // 生产上日均产生近万条「触发重试 / 评估失败」WARN。故按窗口年龄区分两种情况：
+        //   - 年龄 ≤ AGGREGATION_CATCHUP_MS：聚合任务与评估并发执行且取同一窗口，
+        //     属正常追赶，保留 warn + 重试；
+        //   - 超过追赶期：需再区分「该分钟确实无流量」（无规则可评估，静默跳过）
+        //     与「聚合漏落/失败」（必须继续告警并重试，避免静默丢告警）。
+        const ageMs = Date.now() - windowTime.getTime();
+        if (ageMs <= AGGREGATION_CATCHUP_MS) {
+          this.logger.warn(`告警评估缺失预聚合窗口 ${windowTime.toISOString()}，触发重试`);
+          throw new Error(`预聚合窗口 ${windowTime.toISOString()} 缺失`);
+        }
+
+        const windowStart = new Date(windowTime.getTime() - 60 * 1000);
+        const logRows = await databaseQuery<Array<{ cnt: number | string }>>(
+          this.dataSource,
+          `SELECT ${databaseCast('COUNT(*)', 'int')} AS cnt
+           FROM "access_logs"
+           WHERE "createdAt" >= $1 AND "createdAt" < $2`,
+          [windowStart, windowTime],
+          getDatabaseType(),
+        );
+        const logCount = Number(logRows?.[0]?.cnt ?? 0);
+        if (logCount === 0) {
+          this.logger.debug(`预聚合窗口 ${windowTime.toISOString()} 无请求，跳过告警评估`);
+          return;
+        }
+        this.logger.warn(
+          `预聚合窗口 ${windowTime.toISOString()} 缺失，但该分钟存在 ${logCount} 条访问日志，触发重试`,
+        );
+        throw new Error(`预聚合窗口 ${windowTime.toISOString()} 缺失`);
+      }
+
+      // 评估 + 创建告警（规则配置仅读取一次，冷却期原子去重）
+      const alerts = await this.alertEngine.evaluateAndCreateAlerts(metrics);
+      for (const alert of alerts) {
+        this.alertGateway.broadcastAlert({
+          id: alert.id,
+          ruleId: alert.ruleId,
+          level: alert.level,
+          title: alert.title,
+          message: alert.message || '',
+          createdAt: alert.createdAt,
+        });
+      }
+    } catch (error) {
+      this.logger.warn(`告警评估失败: ${(error as Error).message}`);
+      // 抛出以触发 Bull 重试，避免 DB 暂时不可用导致本次评估永久丢失
+      throw error;
+    }
+  }
+}
+
+@Injectable()
+@Processor(QUEUE_NAMES.BASELINE_CALCULATION)
+export class BaselineCalculationProcessor {
+  private readonly logger = new Logger(BaselineCalculationProcessor.name);
+
+  constructor(private behaviorAnalyzer: BehaviorAnalyzer) {}
+
+  /** 每日 04:00 计算过去 7 天基线 */
+  // PERF-B-107：显式 concurrency:1（与 Bull 隐式默认一致，仅显性化，行为不变）
+  @Process({ name: 'calculate-baseline', concurrency: 1 })
+  async calculateBaseline(_job: Job): Promise<void> {
+    try {
+      await this.behaviorAnalyzer.calculateBaselines();
+      this.logger.log('基线计算完成');
+    } catch (error) {
+      this.logger.error(`基线计算失败: ${(error as Error).message}`);
+      throw error;
+    }
+  }
+}
+
+/** Phase 5: 异常行为检测 — 每 15 分钟执行 */
+@Injectable()
+@Processor(QUEUE_NAMES.ATTACK_DETECTION)
+export class AnomalyDetectionProcessor {
+  private readonly logger = new Logger(AnomalyDetectionProcessor.name);
+
+  constructor(
+    private behaviorAnalyzer: BehaviorAnalyzer,
+    private alertEngine: AlertEngineService,
+    private alertGateway: AlertGateway,
+  ) {}
+
+  // PERF-B-107：显式 concurrency:1（与 Bull 隐式默认一致，仅显性化，行为不变）
+  @Process({ name: 'detect-anomalies', concurrency: 1 })
+  async detectAnomalies(_job: Job): Promise<void> {
+    try {
+      const anomalies = await this.behaviorAnalyzer.detectAnomalies();
+      if (anomalies.length > 0) {
+        const alerts = await this.alertEngine.createAlerts(
+          anomalies.map((a) => ({
+            ruleId: `ANOMALY_${a.type.toUpperCase()}`,
+            level: a.severity === 'critical' ? 'critical' as any : a.severity === 'high' ? 'warning' as any : 'info' as any,
+            title: a.title,
+            message: a.message,
+            context: a.details,
+          })),
+        );
+
+        for (const alert of alerts) {
+          this.alertGateway.broadcastAlert({
+            id: alert.id,
+            ruleId: alert.ruleId,
+            level: alert.level,
+            title: alert.title,
+            message: alert.message || '',
+            createdAt: alert.createdAt,
+          });
+        }
+      }
+    } catch (error) {
+      this.logger.warn(`异常检测失败: ${(error as Error).message}`);
+      // 抛出以触发 Bull 重试，避免 DB 暂时不可用导致本次检测永久丢失
+      throw error;
+    }
+  }
+}
+
+@Injectable()
+@Processor(QUEUE_NAMES.DATA_ARCHIVAL)
+export class DataArchivalProcessor {
+  private readonly logger = new Logger(DataArchivalProcessor.name);
+
+  constructor(private _dataSource: DataSource) {}
+
+  /** 每日 02:00 归档超过保留期的日志 */
+  // PERF-B-107：显式 concurrency:1（与 Bull 隐式默认一致，仅显性化，行为不变）
+  @Process({ name: 'archive-data', concurrency: 1 })
+  async archiveData(_job: Job): Promise<void> {
+    // 校验保留期：防止误设为 0/负数/NaN 导致删除全部日志
+    const retentionDays = Math.max(
+      1,
+      parseInt(process.env.ACCESS_LOG_RETENTION_DAYS || '30', 10) || 30,
+    );
+    const cutoff = new Date(Date.now() - retentionDays * 24 * 60 * 60 * 1000);
+    const BATCH_SIZE = 1000;
+    // 单次任务最大分批次数上限（1000 批 = 100 万条），防止无限循环
+    const MAX_BATCHES = 1000;
+
+    try {
+      let deleted = 0;
+      let batches = 0;
+      // 分批删除（每批 1000 条），防止大表一次性删除导致长事务。
+      // 删除计数必须经 databaseQuery() + RETURNING 按返回行数判定：
+      // PG 的 DELETE 返回 [rows, count] 元组，旧写法 result[0]?.rowCount / result[1]
+      // 在 PG 下恒为 0 / 恒为 2，SQLite 下 result[1] 恒为 undefined → 归档计数不可观测
+      // （历史静默失效同一根因）。两方言统一按归一化后的返回行数组长度统计。
+      while (batches < MAX_BATCHES) {
+        const deletedRows = await databaseQuery<Array<{ id: string }>>(
+          this._dataSource,
+          `DELETE FROM "access_logs" WHERE "createdAt" < $1 AND "id" IN (SELECT "id" FROM "access_logs" WHERE "createdAt" < $1 LIMIT $2) RETURNING "id"`,
+          [cutoff, BATCH_SIZE],
+          getDatabaseType(),
+        );
+        const count = Array.isArray(deletedRows) ? deletedRows.length : 0;
+        deleted += count;
+        batches++;
+        if (count < BATCH_SIZE) break;
+      }
+
+      // G8-13：file_access_logs 同样纳入保留期清理，避免该表随文件访问无限膨胀。
+      // 复用同一 retentionDays 与分批删除策略。
+      let fileAccessDeleted = 0;
+      let fileAccessBatches = 0;
+      while (fileAccessBatches < MAX_BATCHES) {
+        // 同 access_logs：经 databaseQuery() + RETURNING 按返回行数统计（方言差异见上）。
+        const deletedRows = await databaseQuery<Array<{ id: string }>>(
+          this._dataSource,
+          `DELETE FROM "file_access_logs" WHERE "createdAt" < $1 AND "id" IN (SELECT "id" FROM "file_access_logs" WHERE "createdAt" < $1 LIMIT $2) RETURNING "id"`,
+          [cutoff, BATCH_SIZE],
+          getDatabaseType(),
+        );
+        const count = Array.isArray(deletedRows) ? deletedRows.length : 0;
+        fileAccessDeleted += count;
+        fileAccessBatches++;
+        if (count < BATCH_SIZE) break;
+      }
+
+      if (batches >= MAX_BATCHES || fileAccessBatches >= MAX_BATCHES) {
+        this.logger.warn(`数据归档达到单次任务批次上限，剩余记录将在下次任务继续归档`);
+      }
+
+      if (deleted > 0 || fileAccessDeleted > 0) {
+        this.logger.log(`已归档 ${deleted} 条过期访问日志、${fileAccessDeleted} 条过期文件访问日志 (${retentionDays}天前)`);
+      }
+    } catch (error) {
+      this.logger.warn(`数据归档失败: ${(error as Error).message}`);
+      throw error;
+    }
+  }
+}
+
+/** Phase 7: 每周一 09:00 生成并发送周报 */
+@Injectable()
+@Processor(QUEUE_NAMES.DATA_ARCHIVAL)
+export class WeeklyReportProcessor {
+  private readonly logger = new Logger(WeeklyReportProcessor.name);
+
+  constructor(private dataSource: DataSource) {}
+
+  // PERF-B-107：显式 concurrency:1（与 Bull 隐式默认一致，仅显性化，行为不变）
+  @Process({ name: 'weekly-report', concurrency: 1 })
+  async generateWeeklyReport(_job: Job): Promise<void> {
+    const since = new Date(Date.now() - 7 * 24 * 3600 * 1000);
+    const dbType = getDatabaseType();
+    try {
+      const [stats] = await databaseQuery<Array<Record<string, string | number>>>(
+        this.dataSource,
+        `SELECT
+           ${databaseCast('COUNT(*)', 'int')} as total_requests,
+           ${databaseCast('COUNT(DISTINCT ip)', 'int')} as unique_visitors,
+           ${databaseCast('COALESCE(SUM("responseSize"), 0)', 'bigint')} as total_bandwidth,
+           ${databaseCast('SUM(CASE WHEN "statusCode" >= 500 THEN 1 ELSE 0 END)', 'int')} as errors_5xx,
+           ${databaseCast('SUM(CASE WHEN "statusCode" >= 400 AND "statusCode" < 500 THEN 1 ELSE 0 END)', 'int')} as errors_4xx
+         FROM access_logs WHERE "createdAt" >= $1`,
+        [since],
+        dbType,
+      );
+
+      const [userStats] = await databaseQuery<Array<Record<string, string | number>>>(
+        this.dataSource,
+        `SELECT ${databaseCast('COUNT(*)', 'int')} as new_users FROM "users" WHERE "createdAt" >= $1`,
+        [since],
+        dbType,
+      );
+
+      const [alertStats] = await databaseQuery<Array<Record<string, string | number>>>(
+        this.dataSource,
+        `SELECT ${databaseCast('COUNT(*)', 'int')} as total_alerts,
+                ${databaseCast('SUM(CASE WHEN "acknowledgedAt" IS NULL THEN 1 ELSE 0 END)', 'int')} as unacknowledged
+         FROM alerts WHERE "createdAt" >= $1`,
+        [since],
+        dbType,
+      );
+
+      this.logger.log(
+        `[周报] 请求: ${stats?.total_requests}, UV: ${stats?.unique_visitors}, ` +
+        `带宽: ${(Number(stats?.total_bandwidth || 0) / 1024 / 1024 / 1024).toFixed(2)} GB, ` +
+        `5xx: ${stats?.errors_5xx}, 4xx: ${stats?.errors_4xx}, ` +
+        `新用户: ${userStats?.new_users}, 告警: ${alertStats?.total_alerts} (${alertStats?.unacknowledged} 未确认)`,
+      );
+    } catch (error) {
+      this.logger.warn(`周报生成失败: ${(error as Error).message}`);
+      // 抛出以触发 Bull 重试，避免暂时性故障导致周报永久缺失
+      throw error;
+    }
+  }
+}

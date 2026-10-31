@@ -1,0 +1,152 @@
+import { databaseColumnType } from '../../database/database-types';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  Index,
+} from 'typeorm';
+
+/** 审计日志操作类型 */
+export type AuditAction =
+  | 'login'
+  | 'login_failed'
+  | 'logout'
+  | 'register'
+  | 'password_reset'
+  | 'email_verify'
+  | 'email_verification_send'
+  | 'role_change'
+  | 'user_create'
+  | 'user_delete'
+  | 'user_ban'
+  | 'user_unban'
+  | 'file_upload'
+  | 'file_download'
+  | 'file_delete'
+  | 'file_delete_request'
+  | 'file_delete_by_admin'
+  | 'file_force_delete'
+  | 'file_restore'
+  | 'file_share'
+  | 'file_password_set'
+  | 'file_password_remove'
+  | 'file_access_change'
+  | 'file_expiry_set'
+  | 'config_change'
+  | 'smtp_config_change'
+  | 'smtp_test_mail'
+  | 'upload_config_change'
+  | 'auth_config_change'
+  | 'cache_config_change'
+  | 'download_config_change'
+  | 'ip_ban'
+  | 'ip_unban'
+  | 'batch_delete_files'
+  | 'batch_delete_files_by_admin'
+  | 'batch_markdown'
+  | 'tag_create'
+  | 'tag_update'
+  | 'tag_delete'
+  | 'tag_set_file'
+  | 'folder_create'
+  | 'folder_rename'
+  | 'folder_move'
+  | 'folder_delete'
+  | 'folder_delete_by_admin'
+  | 'folder_restore'
+  | 'file_move'
+  | 'file_rename'
+  | 'file_copy'
+  | 'file_overwrite'
+  | 'file_overwrite_fallback'
+  | 'share_link_create'
+  | 'share_link_update'
+  | 'share_link_delete'
+  | 'share_link_access'
+  | 'share_link_password_failed'
+  | 'share_link_download'
+  | 'share_link_preview'
+  | 'api_key_create'
+  | 'api_key_revoke'
+  | 'api_key_reveal'
+  | 'api_key_allowlist_update'
+  | 'api_key_rotate'
+  | 'file_verify'
+  | 'file_stale_path_cleanup'
+  | 'data_export'
+  | 'update_check'
+  | 'update_install'
+  | 'update_cancel'
+  | 'update_succeeded'
+  | 'update_failed'
+  | 'update_rollback'
+  // ---- Telegram Bot 文件直链 ----
+  | 'telegram_bot_file_received'
+  | 'telegram_bot_link_issued'
+  | 'telegram_bot_link_accessed'
+  | 'telegram_bot_link_revoked'
+  | 'telegram_bot_link_queried'
+  | 'telegram_bot_quota_denied'
+  | 'telegram_bot_whitelist_add'
+  | 'telegram_bot_whitelist_remove'
+  | 'telegram_bot_command_denied'
+  // ---- Telegram 账号池管理 + 文件镜像备份 ----
+  | 'telegram_account_created'
+  | 'telegram_account_updated'
+  | 'telegram_account_enabled'
+  | 'telegram_account_disabled'
+  | 'telegram_account_deleted'
+  | 'telegram_account_credential_rotated'
+  | 'telegram_account_tested'
+  | 'telegram_account_auth_started'
+  | 'telegram_account_auth_succeeded'
+  | 'telegram_account_auth_failed'
+  | 'telegram_mirror_feature_enabled'
+  | 'telegram_mirror_feature_disabled'
+  | 'telegram_mirror_config_changed'
+  | 'telegram_mirror_rule_tested'
+  | 'telegram_mirror_task_retried'
+  | 'telegram_mirror_task_cancelled'
+  | 'telegram_mirror_fallback_applied'
+  | 'telegram_mirror_backfill_started'
+  | 'telegram_mirror_backfill_resumed';
+
+/** 审计日志状态 */
+export enum AuditStatus {
+  SUCCESS = 'success',
+  FAILURE = 'failure',
+}
+
+@Entity('audit_logs')
+@Index(['userId'])
+@Index(['action'])
+@Index(['createdAt'])
+export class AuditLog {
+  @PrimaryGeneratedColumn('uuid')
+  id: string;
+
+  @Column({ nullable: true, comment: '操作者ID，匿名操作可为空' })
+  userId: string;
+
+  @Column({ type: 'varchar', length: 50, comment: '操作类型' })
+  action: string;
+
+  @Column({ nullable: true, comment: '操作IP' })
+  ip: string;
+
+  @Column({ nullable: true, comment: '资源类型' })
+  resourceType: string;
+
+  @Column({ nullable: true, comment: '资源ID' })
+  resourceId: string;
+
+  @Column({ type: databaseColumnType('jsonb') as 'jsonb', nullable: true, comment: '元数据JSON（如变更前后值、失败原因等）' })
+  metadata: Record<string, unknown> | null;
+
+  @Column({ type: 'varchar', length: 20, default: AuditStatus.SUCCESS, comment: '操作状态：success / failure' })
+  status: string;
+
+  @CreateDateColumn({ comment: '创建时间' })
+  createdAt: Date;
+}

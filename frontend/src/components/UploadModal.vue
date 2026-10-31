@@ -1,0 +1,681 @@
+<template>
+  <t-dialog
+    v-model:visible="dialogVisible"
+    header="上传文件"
+    :width="isMobile ? '100%' : '560px'"
+    :footer="false"
+    @close="handleClose"
+    destroy-on-close
+  >
+    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+      <span style="font-size: 14px; color: var(--text-secondary);">同时上传文件数：</span>
+      <t-select
+        :value="uploadStore.fileConcurrency"
+        :options="concurrencyOptions"
+        :disabled="uploadStore.strictSerialUpload"
+        style="width: 80px;"
+        size="small"
+        @change="handleConcurrencyChange"
+      />
+      <span v-if="uploadStore.strictSerialUpload" style="font-size: 12px; color: var(--text-secondary);">严格小盘模式：单文件串行上传</span>
+    </div>
+
+    <!-- 标签选择 -->
+    <div style="margin-bottom: 12px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 4px;">
+        <span style="font-size: 12px; color: var(--text-secondary);">上传时添加标签：</span>
+        <t-button size="small" variant="text" @click="showTagSelector = !showTagSelector">
+          {{ selectedTagIds.length > 0 ? `已选 ${selectedTagIds.length} 个标签` : (tagStore.tags?.length ? '选择标签' : '新建标签') }}
+        </t-button>
+      </div>
+      <div v-if="showTagSelector" style="padding: 8px; background: var(--bg-secondary); border-radius: 6px; border: 1px solid var(--border-color);">
+        <!-- 已有标签选择 -->
+        <div v-if="tagStore.tags && tagStore.tags.length > 0" style="display: flex; gap: 6px; flex-wrap: wrap;">
+          <t-tag
+            v-for="tag in tagStore.tags"
+            :key="tag.id"
+            :theme="selectedTagIds.includes(tag.id) ? 'primary' : 'default'"
+            :variant="selectedTagIds.includes(tag.id) ? 'dark' : 'outline'"
+            style="cursor: pointer;"
+            @click="toggleTag(tag.id)"
+          >
+            <span :style="{ display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: tag.color, marginRight: '4px' }" />
+            {{ tag.name }}
+          </t-tag>
+        </div>
+        <!-- 在已有标签下方/独立区域：新建标签 -->
+        <div style="display: flex; gap: 6px; margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border-color);">
+          <t-input
+            v-model="newTagName"
+            placeholder="新建标签名称"
+            size="small"
+            style="flex: 1; min-width: 0;"
+            autocomplete="off"
+            name="upload-tag-name"
+          />
+          <t-button size="small" theme="primary" :disabled="!newTagName.trim()" @click="handleCreateTag">
+            新建
+          </t-button>
+        </div>
+      </div>
+    </div>
+    <div
+      class="upload-zone"
+      :class="{ dragover: isDragover }"
+      @dragover.prevent="isDragover = true"
+      @dragleave="isDragover = false"
+      @drop.prevent="handleDrop"
+      @click="triggerInput"
+    >
+      <input
+        ref="fileInput"
+        type="file"
+        multiple
+        :accept="acceptTypes"
+        @change="handleFileSelect"
+        style="display: none;"
+      />
+      <!-- 隐藏文件夹选择器（webkitdirectory 为非标准属性，主流桌面浏览器均支持） -->
+      <input
+        ref="folderInput"
+        type="file"
+        multiple
+        webkitdirectory
+        @change="handleFolderSelect"
+        style="display: none;"
+      />
+      <div style="margin-bottom: 16px;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <path d="M12 16V4M8 8l4-4 4 4" />
+          <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" />
+        </svg>
+      </div>
+      <h3>拖拽文件或文件夹到此处，或点击选择</h3>
+      <p style="color: var(--text-secondary); margin-top: 8px;">
+        单文件最大 {{ maxFileSizeMB }}MB，支持图片、PDF、ZIP 等格式；上传进行中可继续追加文件或文件夹
+      </p>
+      <div style="display: flex; gap: 8px; justify-content: center; margin-top: 12px;">
+        <t-button size="small" variant="outline" theme="primary" @click.stop="triggerInput">
+          选择文件
+        </t-button>
+        <t-button size="small" variant="outline" :disabled="preparing" @click.stop="triggerFolderInput">
+          选择文件夹
+        </t-button>
+      </div>
+      <div v-if="preparingMsg" style="margin-top: 8px; font-size: 12px; color: var(--text-secondary);">
+        {{ preparingMsg }}
+      </div>
+      <div v-else-if="pendingConfigFiles" style="margin-top: 12px; padding: 10px 12px; background: var(--bg-secondary); border: 1px solid var(--color-warning); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+        <span style="font-size: 12px; color: var(--color-warning);">上传规则暂时无法读取，文件已保留</span>
+        <t-button size="small" variant="outline" :loading="configPreparing" @click.stop="retryPendingConfigFiles">重试</t-button>
+      </div>
+      <!-- G11-20：目录预创建失败时保留批次，提供重试入口 -->
+      <div
+        v-else-if="pendingParsedError"
+        style="margin-top: 12px; padding: 10px 12px; background: var(--bg-secondary); border: 1px solid var(--color-error); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px;"
+      >
+        <span style="font-size: 12px; color: var(--color-error);">目录准备失败：{{ pendingParsedError }}</span>
+        <!-- R10：阻止冒泡，避免重试点击穿透到上传区触发系统文件选择器 -->
+        <t-button size="small" variant="outline" :disabled="preparing" @click.stop="retryParsedBatch">重试</t-button>
+      </div>
+    </div>
+
+    <!-- 上传队列（读取全局 upload store，关闭弹窗后上传继续在后台进行） -->
+    <div v-if="uploadStore.entries.length > 0" style="margin-top: 16px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px;">
+        <div style="font-size: 12px; color: var(--text-secondary);">
+          总进度 {{ uploadStore.overallProgress }}%
+          <template v-if="hasActiveUploads"> · {{ uploadStore.overallSpeed }}</template>
+          <template v-if="uploadStore.activeCount > 0"> · 进行中 {{ uploadStore.activeCount }}</template>
+          <template v-if="uploadStore.queuedCount > 0"> · 排队 {{ uploadStore.queuedCount }}</template>
+        </div>
+        <t-button v-if="finishedCount > 0" size="small" variant="text" @click="uploadStore.clearFinished()">
+          清除已完成
+        </t-button>
+      </div>
+      <t-progress :percentage="uploadStore.overallProgress" size="small" style="margin-bottom: 12px;" />
+
+      <UploadQueueList
+        v-if="isPageVisible"
+        :entries="uploadStore.entries"
+        :allow-preview="uploadStore.entries.length < 1000"
+        @cancel="uploadStore.cancelOne"
+      />
+      <div v-else class="background-upload-hint">
+        页面处于后台，已暂停上传详情渲染以降低内存占用；文件仍在继续上传。
+      </div>
+    </div>
+
+    <!-- 全部终态后的汇总提示（等价于原 batchResult 展示） -->
+    <div v-if="allFinished" style="margin-top: 16px;">
+      <t-tag v-if="failedEntries.length === 0" theme="success">
+        全部 {{ successCount }} 个文件已接收，正在后台处理中...
+      </t-tag>
+      <t-tag v-else theme="warning">
+        {{ successCount }} 个成功，{{ failedEntries.length }} 个失败<template v-if="cancelledCount > 0">，{{ cancelledCount }} 个已取消</template>
+      </t-tag>
+
+      <div v-if="failedEntries.length > 0" style="margin-top: 12px;">
+        <div v-for="item in failedEntries" :key="'fail-' + item.uid"
+          style="padding: 8px 12px; background: var(--bg-secondary); border-radius: 8px; margin-bottom: 8px; border: 1px solid var(--border-color);">
+          <span style="color: var(--error); display: inline-flex;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="10" />
+              <path d="M15 9l-6 6M9 9l6 6" />
+            </svg>
+          </span>
+          <span style="margin-left: 8px; font-weight: 500;">{{ item.fileName }}</span>
+          <span style="margin-left: 8px; color: var(--text-secondary);">{{ item.errorReason }}</span>
+        </div>
+      </div>
+
+      <div style="margin-top: 16px; display: flex; gap: 8px; justify-content: flex-end;">
+        <t-button variant="outline" @click="uploadStore.clearFinished()">
+          清除已完成
+        </t-button>
+        <t-button theme="primary" @click="handleClose">
+          完成
+        </t-button>
+      </div>
+    </div>
+  </t-dialog>
+
+  <!-- 文件夹上传重复文件覆盖/跳过决策弹窗 -->
+  <ConflictResolveDialog
+    :visible="showConflictDialog"
+    :conflicts="pendingConflict.conflicts"
+    @confirm="handleConflictConfirm"
+    @cancel="handleConflictCancel"
+  />
+</template>
+
+<script setup lang="ts">
+import { ref, computed, watch, reactive } from 'vue';
+import { usePageVisibility } from '../composables/usePageVisibility';
+import MessagePlugin from '@/utils/message';
+import { useTagStore } from '../stores/tags';
+import { useUploadStore } from '../stores/upload';
+import { useUploadConfigStore } from '../stores/upload-config';
+import { useMobile } from '../composables/useMobile';
+import { getErrorMessage } from '../utils/error';
+import ConflictResolveDialog from '@/components/ConflictResolveDialog.vue';
+import UploadQueueList from '@/components/upload/UploadQueueList.vue';
+// 文件夹上传工具链：采集 → 路径校验 → 目录预创建/复用 → 重复检测
+import { collectFromInput, collectFromDrop, validateParsedFiles } from '../utils/folder-traverse';
+import type { ParsedFile, PathViolation, DropCollectResult } from '../utils/folder-traverse';
+import { prepareDirectories } from '../utils/folder-resolver';
+import { detectConflicts } from '../utils/conflict-detector';
+import type { UploadCandidateItem, ConflictItem, ConflictDecisionEntry } from '../utils/conflict-detector';
+
+const isMobile = useMobile();
+const { isPageVisible } = usePageVisibility();
+
+const props = defineProps<{
+  visible: boolean;
+  initialFiles?: File[];
+  folderId?: string | null;
+  /** 页面级拖拽采集结果（由宿主页面 collectFromDrop 后转发，避免重复入队） */
+  initialDropResult?: DropCollectResult | null;
+}>();
+const emit = defineEmits<{
+  close: [];
+  uploaded: [folderStructureChanged: boolean];
+  dropConsumed: [];
+}>();
+
+// 弹窗双向绑定代理（重命名避免与 props.visible 遮蔽混淆）
+const dialogVisible = computed({
+  get: () => props.visible,
+  set: (val) => { if (!val) emit('close'); },
+});
+
+const uploadStore = useUploadStore();
+const tagStore = useTagStore();
+const uploadConfigStore = useUploadConfigStore();
+
+const maxFileSizeBytes = computed(() => uploadConfigStore.config.maxFileSize);
+const maxFileSizeMB = computed(() => uploadConfigStore.maxFileSizeMB);
+const acceptTypes = computed(() => uploadConfigStore.acceptTypes);
+const fileTypeMode = computed(() => uploadConfigStore.config.fileTypeMode);
+const configPreparing = ref(false);
+const pendingConfigFiles = ref<File[] | null>(null);
+/** 收起弹窗会推进代际，使配置请求完成后的迟到回调无法复活已取消载荷。 */
+let payloadEpoch = 0;
+
+const fileInput = ref<HTMLInputElement>();
+const folderInput = ref<HTMLInputElement>();
+const isDragover = ref(false);
+/** 目录预创建进行中（防重复触发 + 按钮禁用） */
+const preparing = ref(false);
+/** 目录准备进度文案（prepareDirectories onProgress 驱动） */
+const preparingMsg = ref('');
+/** G11-20：目录预创建失败时保留待重试批次（弱网/临时故障可重试，不整批放弃） */
+const pendingParsedBatch = ref<{
+  parsed: ParsedFile[];
+  emptyDirs: string[];
+  violations?: PathViolation[];
+} | null>(null);
+/** G11-20：目录预创建失败文案（供重试提示展示） */
+const pendingParsedError = ref('');
+const selectedTagIds = ref<string[]>([]);
+const showTagSelector = ref(false);
+const newTagName = ref('');
+const concurrencyOptions = Array.from({ length: 4 }, (_, i) => ({ label: `${i + 1}`, value: i + 1 }));
+
+// ---- 重复文件决策弹窗状态（仅文件夹链路） ----
+const showConflictDialog = ref(false);
+/** 待决批次：无冲突项 + 决策前快照的 tagIds/batchId，确认后统一入队 */
+const pendingConflict = reactive({
+  items: [] as UploadCandidateItem[],
+  tagIds: [] as string[],
+  batchId: '',
+  conflicts: [] as ConflictItem[],
+});
+
+function resetPendingConflict() {
+  pendingConflict.items = [];
+  pendingConflict.tagIds = [];
+  pendingConflict.batchId = '';
+  pendingConflict.conflicts = [];
+}
+
+// ---- store 汇总派生状态（替代原 batchResult） ----
+const hasActiveUploads = computed(
+  () => uploadStore.isPumping || uploadStore.activeCount > 0 || uploadStore.queuedCount > 0,
+);
+const successCount = computed(() => uploadStore.successCount);
+const failedEntries = computed(() => uploadStore.entries.filter((e: { status: string }) => e.status === 'error'));
+const cancelledCount = computed(() => uploadStore.cancelledCount);
+const finishedCount = computed(() => uploadStore.finishedCount);
+const allFinished = computed(() => uploadStore.entries.length > 0 && !hasActiveUploads.value);
+
+// 每个文件上传成功即通知宿主刷新列表（store 后台异步完成，无法再用批量返回时机）
+watch(successCount, (cur, old) => {
+  if (cur > (old ?? 0)) emit('uploaded', false);
+});
+
+// G11-19：上传完成提示由全局 UploadProgressIndicator 统一承担，
+// 此处移除弹窗内完成 toast，避免与全局指示器重复提示（双份提示）。
+
+function handleConcurrencyChange(value: unknown) {
+  uploadStore.setFileConcurrency(Number(value));
+}
+
+function toggleTag(tagId: string) {
+  const idx = selectedTagIds.value.indexOf(tagId);
+  if (idx === -1) {
+    selectedTagIds.value.push(tagId);
+  } else {
+    selectedTagIds.value.splice(idx, 1);
+  }
+}
+
+async function handleCreateTag() {
+  const name = newTagName.value.trim();
+  if (!name) return;
+  try {
+    const tag = await tagStore.createTag(name);
+    selectedTagIds.value = [...selectedTagIds.value, tag.id];
+    newTagName.value = '';
+  } catch (err) {
+    MessagePlugin.error(getErrorMessage(err) || '创建标签失败');
+  }
+}
+
+/**
+ * 关闭弹窗仅收起 UI：上传调度已迁至模块级 upload store，
+ * 不再 abort / resetQueue，上传继续在后台进行（由全局指示器展示进度）。
+ */
+function handleClose() {
+  payloadEpoch += 1;
+  showConflictDialog.value = false;
+  resetPendingConflict();
+  // G11-20：关闭弹窗时清空待重试批次，避免残留状态在下次打开时误显示
+  pendingParsedBatch.value = null;
+  pendingParsedError.value = '';
+  pendingConfigFiles.value = null;
+  emit('dropConsumed');
+  emit('close');
+}
+
+/** 校验单个文件是否匹配 acceptTypes 规则（MIME 精确 / image/* 前缀 / .ext 后缀） */
+function matchesAcceptTypes(file: File): boolean {
+  const accept = acceptTypes.value;
+  if (!accept) return true; // 黑名单或未配置模式：前端不限制类型，交由后端校验
+  const fileName = file.name.toLowerCase();
+  const mime = file.type.toLowerCase();
+  return accept.split(',').some((rule) => {
+    const r = rule.trim().toLowerCase();
+    if (!r) return true;
+    if (r.endsWith('/*')) return mime.startsWith(r.slice(0, -1)); // 'image/*' → 'image/'
+    if (r.startsWith('.')) return fileName.endsWith(r);           // '.pdf'
+    return mime === r;                                            // 'application/pdf'
+  });
+}
+
+function validateFiles(files: File[]): File[] {
+  return files.filter((f) => {
+    if (f.size > maxFileSizeBytes.value) {
+      MessagePlugin.warning(`文件 "${f.name}" 超过 ${maxFileSizeMB.value}MB 限制，已跳过`);
+      return false;
+    }
+    // 白名单模式下前端同步校验类型，避免 accept 属性被绕过
+    if (fileTypeMode.value === 'whitelist' && !matchesAcceptTypes(f)) {
+      MessagePlugin.warning(`文件 "${f.name}" 类型不受支持，已跳过`);
+      return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * 追加式入队：校验通过后交给全局 upload store。
+ * 上传进行中可重复调用（无 uploading 守卫），store 按 File 引用去重。
+ * 标签在入队时快照到条目，后续修改选择不影响已入队文件。
+ */
+async function ensureUploadConfig(): Promise<boolean> {
+  if (uploadConfigStore.loaded) {
+    uploadStore.setStrictSerialUpload(uploadConfigStore.config.strictSerialUpload);
+    return true;
+  }
+  configPreparing.value = true;
+  const loaded = await uploadConfigStore.fetchUploadConfig();
+  configPreparing.value = false;
+  if (loaded) uploadStore.setStrictSerialUpload(uploadConfigStore.config.strictSerialUpload);
+  return loaded;
+}
+
+async function enqueueFiles(files: File[]) {
+  if (files.length === 0) return;
+  const epoch = payloadEpoch;
+  if (!await ensureUploadConfig()) {
+    if (epoch !== payloadEpoch || !props.visible) return;
+    pendingConfigFiles.value = [...files];
+    MessagePlugin.warning('无法读取上传规则，文件未入队，请重试');
+    return;
+  }
+  if (epoch !== payloadEpoch || !props.visible) return;
+  pendingConfigFiles.value = null;
+  const validated = validateFiles(files);
+  if (validated.length === 0) return;
+  uploadStore.enqueue(validated, props.folderId ?? null, selectedTagIds.value);
+}
+
+async function retryPendingConfigFiles() {
+  const files = pendingConfigFiles.value;
+  if (!files || configPreparing.value) return;
+  pendingConfigFiles.value = null;
+  await enqueueFiles(files);
+}
+
+// ---- 文件夹上传链路 ----
+
+/** 生成文件夹上传批次 ID（同一次选择/拖拽共享） */
+function genBatchId(): string {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+/**
+ * 文件夹链路公共处理：路径校验（违规整批阻止）→ 大小/类型校验（复用现有逻辑）
+ * → prepareDirectories 预创建/复用目录 → 携带最终 folderId 入队。
+ * handleFolderSelect / handleDrop / 页面拖拽转发 三个入口共用。
+ */
+async function processParsedFiles(
+  parsed: ParsedFile[],
+  emptyDirs: string[],
+  violations?: PathViolation[],
+) {
+  const epoch = payloadEpoch;
+  // 准备中防重复触发
+  if (preparing.value) {
+    MessagePlugin.warning('正在准备目录，请稍候');
+    return;
+  }
+  if (parsed.length === 0) {
+    if (emptyDirs.length > 0) MessagePlugin.info('空文件夹不会被上传');
+    return;
+  }
+
+  // 1. 路径校验：存在非法段（如 '..'/保留名/非法字符）时整批阻止
+  const bad = violations ?? validateParsedFiles(parsed);
+  if (bad.length > 0) {
+    const v = bad[0];
+    MessagePlugin.error(`文件夹路径非法："${v.relativePath}" — ${v.reason}（共影响 ${bad.length} 个文件，已阻止本批上传）`);
+    return;
+  }
+
+  // 2. 先读取受认证保护的上传规则，再按真实字节和类型校验，避免首拖按 20MiB 默认值误拦截。
+  if (!await ensureUploadConfig()) {
+    if (epoch !== payloadEpoch || !props.visible) return;
+    pendingParsedBatch.value = { parsed, emptyDirs, violations };
+    pendingParsedError.value = '无法读取上传规则，请重试';
+    MessagePlugin.warning('无法读取上传规则，文件夹批次已保留，请重试');
+    return;
+  }
+  if (epoch !== payloadEpoch || !props.visible) return;
+  const validFiles = validateFiles(parsed.map((p) => p.file));
+  if (validFiles.length === 0) return;
+  const validSet = new Set(validFiles);
+  const validParsed = parsed.filter((p) => validSet.has(p.file));
+
+  if (emptyDirs.length > 0) MessagePlugin.info('空文件夹不会被上传');
+
+  // 3. 预创建/复用目录（onProgress 驱动局部提示；不占上传令牌池）
+  const baseParentId = props.folderId ?? null;
+  preparing.value = true;
+  preparingMsg.value = '正在准备目录…';
+  try {
+    const { dirIdMap, reusedCount } = await prepareDirectories(
+      baseParentId,
+      validParsed,
+      (msg) => { preparingMsg.value = msg; },
+    );
+    if (reusedCount > 0) MessagePlugin.info(`${reusedCount} 个已存在目录将直接复用`);
+
+    // 4. 生成 {file, folderId, relativePath} 候选（根级文件映射回当前目录）
+    const items = validParsed.map((p) => ({
+      file: p.file,
+      folderId: p.relativePath ? (dirIdMap.get(p.relativePath) ?? baseParentId) : baseParentId,
+      relativePath: p.relativePath,
+    }));
+
+    // 5. 重复检测（复用 folder contents 查询；独立限流，不占上传令牌池）
+    const { conflicts, clean, blockedCount } = await detectConflicts(items);
+    if (blockedCount > 0) {
+      MessagePlugin.info(`${blockedCount} 个既有文件处理中，将按新文件上传`);
+    }
+    if (conflicts.length === 0) {
+      if (epoch !== payloadEpoch || !props.visible) return;
+      uploadStore.enqueueFolderFiles(clean, selectedTagIds.value, genBatchId());
+      emit('uploaded', true);
+    } else {
+      // 有冲突：暂存待决批次，交由决策弹窗；确认后再入队
+      resetPendingConflict();
+      pendingConflict.items = clean;
+      pendingConflict.tagIds = [...selectedTagIds.value];
+      pendingConflict.batchId = genBatchId();
+      pendingConflict.conflicts = conflicts;
+      showConflictDialog.value = true;
+    }
+  } catch (err) {
+    // G11-20：目录预创建失败时保留批次，提供重试入口而非整批放弃
+    const msg = getErrorMessage(err) || '目录准备失败，请重试';
+    pendingParsedBatch.value = { parsed, emptyDirs, violations };
+    pendingParsedError.value = msg;
+    MessagePlugin.error(msg);
+  } finally {
+    preparing.value = false;
+    preparingMsg.value = '';
+  }
+}
+
+/**
+ * G11-20：目录预创建失败后重试——复用已暂存的批次重新走预创建/入队链路。
+ */
+async function retryParsedBatch() {
+  const batch = pendingParsedBatch.value;
+  if (!batch || preparing.value) return;
+  pendingParsedBatch.value = null;
+  pendingParsedError.value = '';
+  await processParsedFiles(batch.parsed, batch.emptyDirs, batch.violations);
+}
+
+/** 决策确认：覆盖项携带 overwriteFileId 入队；跳过项不入队 */
+function handleConflictConfirm(decisions: ConflictDecisionEntry[]) {
+  showConflictDialog.value = false;
+  const overwriteItems = decisions
+    .filter((d) => d.decision === 'overwrite' && !d.conflict.overwriteBlocked)
+    .map((d) => ({ ...d.conflict.item, overwriteFileId: d.conflict.existingId }));
+  const skipCount = decisions.filter((d) => d.decision === 'skip' && !d.conflict.overwriteBlocked).length;
+  const allItems = [...pendingConflict.items, ...overwriteItems];
+  const tagIds = [...pendingConflict.tagIds];
+  const batchId = pendingConflict.batchId;
+  resetPendingConflict();
+  if (allItems.length === 0) {
+    MessagePlugin.info('未上传任何文件');
+    return;
+  }
+  uploadStore.enqueueFolderFiles(allItems, tagIds, batchId);
+  emit('uploaded', true);
+  if (skipCount > 0) MessagePlugin.info(`已跳过 ${skipCount} 个重复文件`);
+}
+
+/** 决策取消：整批放弃 */
+function handleConflictCancel() {
+  showConflictDialog.value = false;
+  resetPendingConflict();
+  MessagePlugin.info('已取消本次上传');
+}
+
+/** 处理拖拽采集结果：parsed 走文件夹链路，plainFiles 走现有平铺入队，同批共存 */
+async function handleCollectResult(result: DropCollectResult) {
+  if (result.degraded) {
+    // Entry API 不可用：保持原行为（全部平铺）并提示已降级
+    if (result.plainFiles.length > 0) {
+      MessagePlugin.info('浏览器不支持文件夹拖拽解析，已按平铺方式上传');
+      enqueueFiles(result.plainFiles);
+    }
+    return;
+  }
+  if (result.plainFiles.length > 0) enqueueFiles(result.plainFiles);
+  await processParsedFiles(result.parsed, result.emptyDirs, result.violations);
+}
+
+async function handleDrop(e: DragEvent) {
+  isDragover.value = false;
+  const dt = e.dataTransfer;
+  if (!dt) return;
+  // Entry API 不可用时保持原有平铺行为
+  if (!dt.items || dt.items.length === 0) {
+    enqueueFiles(Array.from(dt.files || []));
+    return;
+  }
+  try {
+    const result = await collectFromDrop(dt.items);
+    await handleCollectResult(result);
+  } catch (err) {
+    // 采集异常兜底：回退原有平铺行为
+    console.warn('[上传弹窗] 拖拽采集异常，回退平铺上传:', err);
+    enqueueFiles(Array.from(dt.files || []));
+  }
+}
+
+function triggerInput() {
+  fileInput.value?.click();
+}
+
+function triggerFolderInput() {
+  if (preparing.value) return;
+  folderInput.value?.click();
+}
+
+function handleFileSelect(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const files = Array.from(target.files || []);
+  enqueueFiles(files);
+  target.value = '';
+}
+
+/** 文件夹选择器：采集 → 公共文件夹链路 */
+async function handleFolderSelect(e: Event) {
+  const target = e.target as HTMLInputElement;
+  const files = Array.from(target.files || []);
+  target.value = '';
+  if (files.length === 0) return;
+  const parsed = collectFromInput(files);
+  await processParsedFiles(parsed, []);
+}
+
+// 已消费的拖拽载荷引用（防止「visible watcher」与「即时 watcher」重复消费）
+let lastConsumedDropFiles: File[] | null = null;
+let lastConsumedDropResult: DropCollectResult | null = null;
+
+// 弹窗已打开时宿主再次转发拖拽数据：initialDropResult / initialFiles 引用变化即消费，
+// 避免「弹窗打开期间再拖入文件被静默丢弃」（G11-04）。
+watch(
+  () => [props.initialDropResult, props.initialFiles] as const,
+  async ([dropResult, files]) => {
+    if (!props.visible) return;
+    if (dropResult && dropResult !== lastConsumedDropResult) {
+      lastConsumedDropResult = dropResult;
+      try {
+        await handleCollectResult(dropResult);
+      } finally {
+        emit('dropConsumed');
+      }
+      return;
+    }
+    if (files && files !== lastConsumedDropFiles && files.length > 0) {
+      lastConsumedDropFiles = files;
+      enqueueFiles(Array.from(files));
+      emit('dropConsumed');
+    }
+  },
+);
+
+// 上传配置改为弹窗打开时惰性获取，避免未打开弹窗也发请求
+watch(() => props.visible, async (isVisible) => {
+  if (isVisible) {
+    // 预热受认证的共享上传规则；实际消费载荷仍由各入口等待此 Promise 后执行。
+    void uploadConfigStore.fetchUploadConfig();
+    await tagStore.fetchTags();
+    selectedTagIds.value = [];
+    showTagSelector.value = false;
+    newTagName.value = '';
+    if (props.initialFiles && props.initialFiles.length > 0 && props.initialFiles !== lastConsumedDropFiles) {
+      lastConsumedDropFiles = props.initialFiles;
+      await enqueueFiles(Array.from(props.initialFiles));
+      emit('dropConsumed');
+    }
+    // 页面级拖拽转发的采集结果：走与弹窗拖拽完全一致的链路
+    if (props.initialDropResult && props.initialDropResult !== lastConsumedDropResult) {
+      lastConsumedDropResult = props.initialDropResult;
+      try {
+        await handleCollectResult(props.initialDropResult);
+      } finally {
+        emit('dropConsumed');
+      }
+    }
+  }
+});
+</script>
+
+<style scoped>
+.background-upload-hint {
+  padding: 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  text-align: center;
+}
+
+@media (max-width: 768px) {
+  :deep(.t-dialog) {
+    margin: 16px;
+  }
+  :deep(.t-dialog__body) {
+    padding: 12px;
+  }
+}
+</style>

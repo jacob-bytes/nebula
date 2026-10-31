@@ -1,0 +1,67 @@
+import { IsEmail, IsString, MinLength, MaxLength, Matches, IsEnum, ValidateIf, IsOptional } from 'class-validator';
+
+export enum VerificationType {
+  REGISTER = 'register',
+  RESET_PASSWORD = 'reset_password',
+}
+
+export class RegisterDto {
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email: string;
+
+  @IsString()
+  @MinLength(6, { message: '密码至少6位' })
+  @MaxLength(72, { message: '密码最多72位' })
+  password: string;
+
+  @ValidateIf((o) => o.code !== undefined && o.code !== null && o.code !== '')
+  @IsString()
+  @Matches(/^\d{6}$/, { message: '验证码必须是6位数字' })
+  code?: string;
+}
+
+export class LoginDto {
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email: string;
+
+  @IsString()
+  @MinLength(1, { message: '请输入密码' })
+  @MaxLength(72, { message: '密码最多72位' })
+  password: string;
+}
+
+export class SendCodeDto {
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email: string;
+
+  @IsEnum(VerificationType, { message: '类型必须是 register 或 reset_password' })
+  type: string;
+
+  /** Turnstile 前端组件返回的 token；仅注册发送验证码时强制服务端校验。 */
+  @IsOptional()
+  @IsString()
+  turnstileToken?: string;
+}
+
+export class VerifyEmailDto {
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email: string;
+
+  @IsString()
+  @Matches(/^\d{6}$/, { message: '验证码必须是6位数字' })
+  code: string;
+}
+
+export class ResetPasswordDto {
+  @IsEmail({}, { message: '请输入有效的邮箱地址' })
+  email: string;
+
+  @IsString()
+  @Matches(/^\d{6}$/, { message: '验证码必须是6位数字' })
+  code: string;
+
+  @IsString()
+  @MinLength(6, { message: '新密码至少6位' })
+  @MaxLength(72, { message: '新密码最多72位' })
+  newPassword: string;
+}
