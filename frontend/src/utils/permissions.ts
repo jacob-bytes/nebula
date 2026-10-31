@@ -19,6 +19,7 @@ export const PAGE_ROLES: Readonly<Record<string, readonly UserRole[]>> = {
   '/admin/user-activity': SUPER_ADMIN_ROLES,
   '/admin/audit-logs': SUPER_ADMIN_ROLES,
   '/admin/telegram-accounts': SUPER_ADMIN_ROLES,
+  '/admin/design-system': SUPER_ADMIN_ROLES,
 };
 
 export function hasAnyRole(

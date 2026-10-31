@@ -101,6 +101,17 @@
   --duration-normal: 200ms;
   --duration-slow: 320ms;
 
+  /* --- Spacing scale（4px 基准，4/8/12/16/24/32/48） ---
+     这些变量在 PersistentMediaHost 等组件里被引用，此前从未定义，
+     导致 var(--space-4) 解析为空值、浮动播放器贴边。 */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-12: 48px;
+
   /* --- Layout --- */
   --sidebar-width: 240px;
   --header-height: 0px;

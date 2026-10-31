@@ -147,6 +147,7 @@ const icons = {
   settings: svg('<circle cx="10" cy="10" r="3"/><path d="M10 2v2m0 12v2M2 10h2m12 0h2M4.2 4.2l1.4 1.4m8.8 8.8l1.4 1.4M15.8 4.2l-1.4 1.4M5.6 14.4l-1.4 1.4"/>'),
   users: svg('<circle cx="7" cy="7" r="3"/><path d="M1 18v-1a4 4 0 014-4h4a4 4 0 014 4v1"/><circle cx="15" cy="7" r="2.5"/><path d="M15 13a4 4 0 014 4v1"/>'),
   adminFiles: svg('<path d="M5 2h7l4 4v10a2 2 0 01-2 2H5a2 2 0 01-2-2V4a2 2 0 012-2z"/><path d="M12 2v4h4"/><line x1="7" y1="10" x2="13" y2="10"/><line x1="7" y1="13" x2="11" y2="13"/>'),
+  designSystem: svg('<path d="M10 2a8 8 0 100 16c1 0 1.5-.8 1.5-1.6 0-.5-.2-.8-.5-1.1-.3-.3-.5-.6-.5-1.1 0-.8.7-1.5 1.5-1.5H14a4 4 0 004-4c0-3.3-3.6-6-8-6z"/><circle cx="6.5" cy="8" r="1"/><circle cx="10" cy="5.5" r="1"/><circle cx="13.5" cy="8" r="1"/>'),
   config: svg('<line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/><circle cx="7" cy="5" r="1.5" fill="currentColor"/><circle cx="13" cy="10" r="1.5" fill="currentColor"/><circle cx="9" cy="15" r="1.5" fill="currentColor"/>'),
   accessLogs: svg('<circle cx="10" cy="10" r="8"/><polyline points="10 5 10 10 14 12"/>'),
   security: svg('<path d="M10 2L3 5.5v4.5c0 4.5 3 8 7 9.5 4-1.5 7-5 7-9.5V5.5L10 2z"/><path d="M7 10l2 2 4-4"/>'),
@@ -179,6 +180,7 @@ const adminNav: NavItem[] = [
   { to: '/admin/telegram-accounts', label: 'Telegram 账号池', icon: icons.telegramAccounts, roles: PAGE_ROLES['/admin/telegram-accounts'] },
   // 系统配置包含仅超级管理员可读取的缓存配置和仅超级管理员可保存的全局配置，
   // 因此按“拥有完整页面权限”原则只向超级管理员展示。
+  { to: '/admin/design-system', label: '设计规范', icon: icons.designSystem, roles: PAGE_ROLES['/admin/design-system'] },
   { to: '/admin/config', label: '系统配置', icon: icons.config, roles: PAGE_ROLES['/admin/config'] },
 ];
 
