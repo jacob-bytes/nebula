@@ -419,6 +419,12 @@ body {
 
 .page-header p { color: var(--text-secondary); font-size: 14px; }
 
+/* 带右侧动作的页头：标题与主操作同一行（shadcn 页面头部的常见结构） */
+.page-header--row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+}
+
 /* ============================================================
    6. CARDS & STATS
    ============================================================ */

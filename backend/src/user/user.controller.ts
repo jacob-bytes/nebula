@@ -41,6 +41,19 @@ export class UserController {
     return this.userService.getUserStats(user.id, { todayStart: todayStartDate });
   }
 
+  /**
+   * 上传趋势（最近 N 天，默认 7，上限 90）。
+   * 与 me/stats 同源口径：只统计未删除文件，按天补齐零值桶。
+   */
+  @Get('me/stats/trend')
+  async getMyUploadTrend(@CurrentUser() user: User, @Query('days') days?: string) {
+    const parsed = Number(days);
+    return this.userService.getUploadTrend(
+      user.id,
+      Number.isFinite(parsed) && parsed > 0 ? parsed : 7,
+    );
+  }
+
   @Get(':id')
   @Roles(UserRole.ADMIN, UserRole.SUPER_ADMIN)
   async findOne(@Param('id', ParseUUIDPipe) id: string) {

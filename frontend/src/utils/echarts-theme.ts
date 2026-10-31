@@ -7,7 +7,7 @@ import echarts from './echarts';
 
 /* ---- Color Palette (Cloudscape-aligned, high readability) ---- */
 export const CHART_COLORS = {
-  primary:    '#0972D3',
+  primary:    '#1E40AF',
   success:    '#037F0C',
   warning:    '#8C6A00',
   danger:     '#D13212',
@@ -28,7 +28,7 @@ export const CHART_COLORS = {
 
 /* ---- Dark theme palette (brighter variants for dark surfaces) ---- */
 export const CHART_COLORS_DARK = {
-  primary:    '#539FE5',
+  primary:    '#60A5FA',
   success:    '#53D769',
   warning:    '#C7A830',
   danger:     '#E8604C',

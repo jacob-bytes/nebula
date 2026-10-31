@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, BadRequestException, ConflictException, ForbiddenException } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
+import { databaseDateBucket } from '../database/database-types';
 import { Repository, DataSource } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
 import { User, UserRole } from '../common/entities/user.entity';
@@ -328,6 +329,57 @@ export class UserService {
       resourceType: 'user',
       resourceId: id,
     });
+  }
+
+  /**
+   * 上传趋势：按天分桶统计最近 N 天的上传数量与字节数。
+   *
+   * 为什么补齐空白天：图表需要连续的时间轴，否则「昨天没传文件」会表现为
+   * 前后两点相连，视觉上等于伪造了趋势。这里在服务端补齐零值桶，
+   * 客户端直接渲染即可（也避免不同时区的浏览器各自补洞产生不一致）。
+   */
+  async getUploadTrend(
+    userId: string,
+    days = 7,
+  ): Promise<{ days: Array<{ date: string; count: number; bytes: number }> }> {
+    const safeDays = Number.isFinite(days) ? Math.min(90, Math.max(1, Math.trunc(days))) : 7;
+    const bucket = databaseDateBucket('file.createdAt', 'day');
+    const since = new Date();
+    since.setHours(0, 0, 0, 0);
+    since.setDate(since.getDate() - (safeDays - 1));
+
+    const rows = await this.fileRepository
+      .createQueryBuilder('file')
+      .select([
+        `${bucket} as "bucket"`,
+        'COUNT(*) as "count"',
+        'COALESCE(SUM(file.size), 0) as "bytes"',
+      ])
+      .where('file.uploaderId = :userId', { userId })
+      .andWhere('file.isDeleted = false')
+      .andWhere('file.createdAt >= :since', { since })
+      .groupBy(bucket)
+      .getRawMany<{ bucket: string | Date; count: string | number; bytes: string | number }>();
+
+    const byDate = new Map<string, { count: number; bytes: number }>();
+    for (const row of rows) {
+      // PG 的 DATE_TRUNC 返回 Date、SQLite 的 strftime 返回字符串；统一按前 10 位取日期
+      const key = (row.bucket instanceof Date
+        ? row.bucket.toISOString().slice(0, 10)
+        : String(row.bucket).slice(0, 10));
+      byDate.set(key, { count: Number(row.count) || 0, bytes: Number(row.bytes) || 0 });
+    }
+
+    const series: Array<{ date: string; count: number; bytes: number }> = [];
+    for (let offset = 0; offset < safeDays; offset += 1) {
+      const day = new Date(since);
+      day.setDate(since.getDate() + offset);
+      // 用本地日期构造键，与 SQLite 的 strftime（按连接本地时区）口径一致
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(2, '0')}-${String(day.getDate()).padStart(2, '0')}`;
+      const hit = byDate.get(key);
+      series.push({ date: key, count: hit?.count ?? 0, bytes: hit?.bytes ?? 0 });
+    }
+    return { days: series };
   }
 
   async getUserStats(
