@@ -21,6 +21,7 @@ import { JobsModule } from './jobs/jobs.module';
 import { AlertModule } from './alert/alert.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { SecurityModule } from './security/security.module';
+import { SetupModule } from './setup/setup.module';
 import { TagModule } from './tag/tag.module';
 import { PublicConfigModule } from './public-config/public-config.module';
 import { HealthModule } from './health/health.module';
@@ -57,6 +58,7 @@ import { TelegramMirrorModule } from './telegram-mirror/telegram-mirror.module';
     JobsModule,
     AlertModule,
     SecurityModule,
+    SetupModule,
     TagModule,
     PublicConfigModule,
     HealthModule,

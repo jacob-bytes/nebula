@@ -93,7 +93,12 @@ export function validateEnv(env: NodeJS.ProcessEnv = process.env): void {
     .filter(Boolean);
   const poolConfigured = poolEnabled && (poolRaw.length > 0 || multiTokens.length > 0);
 
-  if (!poolConfigured) {
+  // 首次运行向导（/setup）模式：安装时没有 Telegram 凭据，
+  // 应用需要先启动起来才能提供向导页，因此这里放行缺失的凭据。
+  // 上传相关能力在向导完成前不可用（由运行期校验兜底），不会静默失败。
+  const setupMode = (env.SETUP_MODE || '').trim().toLowerCase() === 'true';
+
+  if (!poolConfigured && !setupMode) {
     if (!env.TELEGRAM_BOT_TOKEN) {
       errors.push('TELEGRAM_BOT_TOKEN 未设置');
     } else if (!/^\d+:[\w-]+$/.test(env.TELEGRAM_BOT_TOKEN)) {

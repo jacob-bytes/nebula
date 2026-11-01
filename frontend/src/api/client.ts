@@ -71,7 +71,8 @@ async function startRedirect() {
 function buildRedirectParam(): string | undefined {
   try {
     const path = window.location.pathname;
-    if (path === '/' || path === '/login' || path === '/register' || path === '/reset-password' || path.startsWith('/s/')) {
+    if (path === '/' || path === '/login' || path === '/register' || path === '/reset-password'
+      || path === '/setup' || path.startsWith('/s/')) {
       return undefined;
     }
     const url = new URL(window.location.href);
@@ -92,6 +93,8 @@ function isAuthPage(): boolean {
     path === '/login' ||
     path === '/register' ||
     path === '/reset-password' ||
+    // 首次运行向导：未初始化时 /auth/me 必然 401，不能把用户弹去登录页
+    path === '/setup' ||
     path.startsWith('/s/')
   );
 }

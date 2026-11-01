@@ -54,7 +54,9 @@ curl -fsSL https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/ins
 
 下载发行包 → **验签** → 解压到 `/opt/nebula/releases/<版本>` → 切 `current` → 调 `start.sh`
 完成配置与 systemd 安装。默认 SQLite（免装数据库），不接管反向代理与证书。
-无人值守用 `--yes` + `NEBULA_*` 环境变量，详见 [docs/deployment.md](docs/deployment.md)。
+无人值守用 `--yes` + `NEBULA_*` 环境变量；也可以加 `--defer-config` 让安装阶段**完全不问配置**，
+首次打开 `/setup` 在浏览器里按引导完成（一次性安装令牌保护）。
+详见 [docs/deployment.md](docs/deployment.md)。
 
 ### 裸机部署（Linux，不用容器）
 

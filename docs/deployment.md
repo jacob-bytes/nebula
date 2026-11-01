@@ -22,6 +22,24 @@ sudo NEBULA_TELEGRAM_BOT_TOKEN=123456:abc \
      bash install.sh --yes
 ```
 
+
+### 零配置安装 + 浏览器向导
+
+若希望安装阶段完全不问配置，加 `--defer-config`：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/install.sh | sudo bash -s -- --defer-config
+```
+
+安装完成后终端会打印**一次性安装令牌**与访问地址；打开 `http://<主机>:3000/setup`，
+按三步填写站点信息、Telegram 凭据（可点「发送测试消息」验证）与管理员账号即可。
+
+- 令牌同时保存在 `<安装根>/.setup-token`（仅服务用户可读），完成后自动删除；
+- 未初始化的实例**一旦暴露公网**，任何能访问 `/setup` 的人都可能抢先设置管理员，
+  因此令牌是强制项，不要跳过；
+- 完成后应用会写回 `.env` 并退出，systemd（`Restart=on-failure`）带着新配置重新拉起，
+  页面刷新即可登录。
+
 要点：
 
 - **验签默认强制**：下载 `SHA256SUMS.sig` 并用对应 tag 的公钥校验，失败即中止且不切换

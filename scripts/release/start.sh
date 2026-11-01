@@ -580,6 +580,54 @@ configure_noninteractive() {
   write_app_env
 }
 
+# ---------------------------------------------------------------------------
+# 向导模式：安装时不问任何配置，应用以「未初始化」状态启动，配置在浏览器里完成
+#（/setup，一次性令牌保护）。
+#
+# 与正常配置的差别只有一个：不写 Telegram 凭据，改为写 SETUP_MODE=true 并生成
+# 一次性令牌文件。向导完成后由应用自己写回 .env 并以 EX_TEMPFAIL 退出，
+# 系统单元（Restart=on-failure）会带着新配置重新拉起。
+# ---------------------------------------------------------------------------
+configure_setup_mode() {
+  local token token_file
+  token=$(generate_hex 24)
+  token_file="$RUNTIME_DIR/.setup-token"
+
+  umask 077
+  : > "$APP_ENV"
+  {
+    printf '# 由 start.sh（向导模式）生成。首次访问 /setup 完成配置后本文件会被应用更新。\n'
+    printf 'NODE_ENV=production\nAPP_HOST=0.0.0.0\nAPP_PORT=3000\n'
+    printf 'APP_URL="http://127.0.0.1:3000"\nFRONTEND_URL="http://127.0.0.1:3000"\n'
+    printf 'CORS_ORIGINS="http://127.0.0.1:3000"\nSECURE_COOKIE=false\nTOKEN_EXTRACTION_MODE=both\n'
+  } >> "$APP_ENV"
+  write_env_line "$APP_ENV" JWT_SECRET "$(generate_hex 48)"
+  write_env_line "$APP_ENV" CODE_HMAC_SECRET "$(generate_hex 48)"
+  printf 'JWT_EXPIRES_IN=7d\n' >> "$APP_ENV"
+  printf 'DB_TYPE=sqlite\nDB_SYNCHRONIZE=false\nDB_MIGRATIONS_RUN=true\n' >> "$APP_ENV"
+  write_env_line "$APP_ENV" DB_DATABASE './data/nebula.sqlite'
+  printf 'DB_SQLITE_BUSY_TIMEOUT_MS=5000\nDB_POOL_SIZE=20\n' >> "$APP_ENV"
+  printf 'REDIS_HOST=127.0.0.1\nREDIS_PORT=6379\nREDIS_DB=0\n' >> "$APP_ENV"
+  # 向导模式开关 + 令牌文件位置（应用据此判断是否放行 /setup 与是否放宽启动校验）
+  printf 'SETUP_MODE=true\n' >> "$APP_ENV"
+  write_env_line "$APP_ENV" SETUP_TOKEN_FILE "$token_file"
+  printf 'MAX_FILE_SIZE=83886080\nACCESS_LOG_RETENTION_DAYS=30\nAUDIT_LOG_RETENTION_DAYS=90\n' >> "$APP_ENV"
+  printf 'LOG_DIR=tmp/logs\nLOG_ROTATION_INTERVAL=daily\nLOG_MAX_FILE_SIZE=20971520\nLOG_RETENTION_DAYS=7\n' >> "$APP_ENV"
+  chmod 600 "$APP_ENV"
+
+  printf '%s\n' "$token" > "$token_file"
+  chmod 600 "$token_file"
+
+  # 向导完成后不再需要 Bot API；保持与正常模式一致的变量占位，避免后续读取到未定义值
+  ENABLE_BOT_API=false
+
+  success "向导模式配置已写入 $APP_ENV"
+  printf '\n  首次访问地址：http://<主机>:3000/setup\n'
+  printf '  一次性安装令牌：%s\n' "$token"
+  printf '  （令牌同时保存在 %s，仅服务用户可读；完成后自动删除）\n\n' "$token_file"
+}
+
+
 configure() {
   local app_url cors_origins redis_host redis_port redis_password redis_db
   local bot_token chat_id secure_cookie jwt_secret code_hmac_secret
@@ -879,12 +927,15 @@ main() {
   ensure_current_layout
 
   local noninteractive=0
+  local setup_mode=0
   case "${1:-}" in
     --help|-h)
       printf '%s\n' \
         '用法：./start.sh [--yes]' \
         '  无参数：全新环境进入首次部署；发现已有服务、配置或后端数据时进入服务管理菜单。' \
         '  --yes：非交互首次部署，配置全部来自 NEBULA_* 环境变量（供 install.sh / 自动化调用）。' \
+        '  --setup：完全不问配置，应用以未初始化状态启动，首次访问 /setup 在浏览器里完成；' \
+        '           终端会打印一次性安装令牌。' \
         '         必填：NEBULA_TELEGRAM_BOT_TOKEN、NEBULA_TELEGRAM_CHAT_ID' \
         '         可选：NEBULA_DB_TYPE(sqlite|postgres)、NEBULA_APP_URL、NEBULA_REDIS_HOST/PORT、' \
         '               NEBULA_TELEGRAM_API_ID/HASH（提供则启用内置 Bot API）、NEBULA_SMTP_HOST 等' \
@@ -892,6 +943,7 @@ main() {
       exit
       ;;
     --yes|-y) noninteractive=1 ;;
+    --setup) setup_mode=1 ;;
     '') ;;
     *) die "不支持参数：$1（可用：--yes / --help）" ;;
   esac
@@ -903,7 +955,10 @@ main() {
   fi
 
   ensure_runtime_dirs
-  if [[ "$noninteractive" == 1 ]]; then
+  if [[ "$setup_mode" == 1 ]]; then
+    info '向导模式：安装阶段不收集任何配置，首次访问 /setup 在浏览器里完成。'
+    configure_setup_mode
+  elif [[ "$noninteractive" == 1 ]]; then
     info '非交互模式：配置来自 NEBULA_* 环境变量。'
     configure_noninteractive
   else

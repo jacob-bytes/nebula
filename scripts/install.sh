@@ -20,6 +20,7 @@ VERSION=''
 ARCHIVE=''
 PUBKEY=''
 NONINTERACTIVE=0
+DEFER_CONFIG=0
 DRY_RUN=0
 SKIP_VERIFY=0
 FORCE=0
@@ -36,6 +37,8 @@ usage() {
   --root DIR             安装根目录（默认 /opt/nebula）
   --public-key PATH      覆盖验签公钥（默认从对应 tag 拉取 scripts/release/update-public-key.pem）
   --yes                  非交互安装，配置取自 NEBULA_* 环境变量
+  --defer-config         安装阶段不收集任何配置：应用以未初始化状态启动，
+                         首次访问 /setup 在浏览器里完成（终端会打印一次性令牌）
   --force                current 已存在时强制切换（默认拒绝，避免覆盖现有安装）
   --insecure-skip-verify 跳过验签（仅离线调试；正式环境禁止）
   --dry-run              只打印计划，不下载、不写入（可在非 Linux 上运行）
@@ -61,6 +64,7 @@ while [[ $# -gt 0 ]]; do
     --root) ROOT=${2:?--root 需要目录}; shift 2 ;;
     --public-key) PUBKEY=${2:?--public-key 需要文件路径}; shift 2 ;;
     --yes|-y) NONINTERACTIVE=1; shift ;;
+    --defer-config) DEFER_CONFIG=1; shift ;;
     --force) FORCE=1; shift ;;
     --insecure-skip-verify) SKIP_VERIFY=1; shift ;;
     --dry-run) DRY_RUN=1; shift ;;
@@ -80,9 +84,9 @@ if [[ "$DRY_RUN" == 1 ]]; then
   版本        ：${VERSION:-<最新正式 Release>}
   发行包来源  ：${ARCHIVE:-https://github.com/$REPO/releases/download/<tag>/nebula-<tag>-linux-x64.zip}
   验签        ：$([[ "$SKIP_VERIFY" == 1 ]] && echo '跳过（--insecure-skip-verify）' || echo '强制：SHA256SUMS.sig + 内置公钥')
-  配置模式    ：$([[ "$NONINTERACTIVE" == 1 ]] && echo '非交互（NEBULA_* 环境变量）' || echo '交互式（逐项提问）')
+  配置模式    ：$([[ "$DEFER_CONFIG" == 1 ]] && echo '向导（安装零提问，首次访问 /setup 配置）' || { [[ "$NONINTERACTIVE" == 1 ]] && echo '非交互（NEBULA_* 环境变量）' || echo '交互式（逐项提问）'; })
   目标路径    ：$ROOT/releases/<版本> + $ROOT/current 符号链接
-  随后执行    ：$ROOT/current/scripts/release/start.sh$([[ "$NONINTERACTIVE" == 1 ]] && echo ' --yes' || echo '')
+  随后执行    ：$ROOT/current/scripts/release/start.sh$([[ "$DEFER_CONFIG" == 1 ]] && echo ' --setup' || { [[ "$NONINTERACTIVE" == 1 ]] && echo ' --yes' || echo ''; })
   不会做      ：安装 PostgreSQL/Redis、配置反向代理或证书
 EOF
   exit 0
@@ -200,7 +204,10 @@ log "current → releases/$VERSION"
 
 # ---- 交给发行包内的首次部署脚本 -------------------------------------------
 START="$ROOT/current/scripts/release/start.sh"
-if [[ "$NONINTERACTIVE" == 1 ]]; then
+if [[ "$DEFER_CONFIG" == 1 ]]; then
+  log '进入向导模式（start.sh --setup）：安装阶段不收集配置'
+  bash "$START" --setup
+elif [[ "$NONINTERACTIVE" == 1 ]]; then
   log '进入非交互首次部署（start.sh --yes）'
   bash "$START" --yes
 else

@@ -53,6 +53,13 @@ const routes: RouteRecordRaw[] = [
     meta: { guest: true },
   },
   {
+    // 首次运行向导：公开路由（此时还没有任何账号），写操作由一次性安装令牌保护
+    path: '/setup',
+    name: 'Setup',
+    component: () => import('../views/setup/SetupView.vue'),
+    meta: { guest: true },
+  },
+  {
     path: '/register',
     name: 'Register',
     component: () => import('../views/auth/Register.vue'),

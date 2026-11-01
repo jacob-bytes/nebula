@@ -6,6 +6,38 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.24.0] - 2026-11-01
+
+首次运行向导：安装零提问，配置在浏览器完成。
+
+### 新增
+
+- **`/setup` 引导式初始化**（三步：站点 → Telegram → 管理员）：
+  - 安装脚本用 `--defer-config`（install.sh）/ `--setup`（start.sh）启动，**安装阶段不收集任何配置**；
+  - 应用以「未初始化」状态启动（`SETUP_MODE=true` 时放宽 Telegram 凭据的启动校验）；
+  - 向导内可「发送测试消息」验证 Bot Token 与 Chat ID；
+  - 完成后写回 `.env`（保留无关键、覆盖向导键、关闭 SETUP_MODE）、创建超级管理员、
+    删除令牌文件，并以 `EX_TEMPFAIL(75)` 退出，由 systemd `Restart=on-failure` 带新配置拉起。
+- **一次性安装令牌**：安装脚本生成并写入 `<安装根>/.setup-token`（0600），同时打印在终端；
+  向导的每个写操作都必须带上它（恒定时间比较），失败统一 403，不区分「文件不存在」与「令牌错误」。
+- `SetupModule`（`/api/setup/status|test-telegram|complete`）+ 8 条服务层用例
+  （令牌校验、初始化状态机、`.env` 合并写入、参数校验在写库前拦截）。
+
+### 修复
+
+- **`/setup` 被 401 拦截器弹回登录页**：向导页加载时 `/auth/me` 必然 401，
+  axios 拦截器把它当成会话失效。已将 `/setup` 加入免重定向名单（与 `/login`、分享页同列）。
+- 向导里 Telegram 不可达时返回 500，改为 502 并给出可操作提示
+  （提示可用 `TELEGRAM_API_BASE` 走代理/自建 Bot API）。
+
+### 验证
+
+- 端到端实测：向导模式启动 → status `available=true` → 错误令牌 403 → 完成向导 200 →
+  数据库出现 `super_admin` → `.env` 写入新值且 `SETUP_MODE="false"` → 令牌文件已删除 →
+  再次 status `initialized=true, available=false`。
+- 前端 vitest 409、后端 jest 1635 通过；构建与体积门禁通过（为控制 CSS，步骤条改为自绘，
+  避免引入 TDesign Steps）。
+
 ## [0.23.0] - 2026-11-01
 
 一键安装脚本（Linux / systemd）与 `start.sh` 非交互模式。
