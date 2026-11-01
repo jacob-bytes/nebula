@@ -146,6 +146,9 @@ Redis 承载 8 个 Bull 队列：`metrics-aggregation`、`attack-detection`、`a
 | `FILE_DOWNLOAD_DIRECT_WAIT_SECONDS` | `60` | 非任务化直接下载端点的有限等待上限（秒）；超时返回 `503 DOWNLOAD_SERVER_BUSY` + `Retry-After`（不再挂到 1800s）；4GiB 场景建议上调到 `180`（SystemConfig 热更新） |
 | `FILE_DOWNLOAD_TASK_RETENTION_SECONDS` | `900` | 下载任务状态保留时间（秒）（SystemConfig 热更新） |
 | `THUMBNAIL_DIR` | `tmp/thumbnails` | 缩略图目录 |
+| `FFMPEG_PATH` | `ffmpeg` | 视频封面抽帧使用的 ffmpeg 可执行文件路径 |
+| `FFPROBE_PATH` | `ffprobe` | 视频元数据（时长/分辨率/编码）使用的 ffprobe 路径，随 ffmpeg 一起安装 |
+| `VIDEO_META_ENABLED` | `true` | 上传完成后用 ffprobe 解析视频元数据并生成「自动·」前缀的技术标签（L1）；关闭后不分析 |
 | `FILE_PROCESSING_STALE_MINUTES` | `60` | 上传队列僵尸任务恢复阈值（分钟） |
 
 > **配置来源**：`FILE_CACHE_BUILD_*` 三层超时、`HTTP_IDLE_TIMEOUT_SECONDS`、`TELEGRAM_FILE_STREAM_TIMEOUT_SECONDS` 为**真实环境变量**，`.env` 生效；`FILE_CACHE_NO_CACHE_MODE` 的环境变量**只作为构造期初始值**——启动时 `reloadConfig()` 会立即从 SystemConfig 重读并覆盖（DB 无记录时回退硬编码 `false`，见 `backend/src/file/file-cache.service.ts`），因此**仅设 `.env` 不能保证无缓存模式生效**，需在管理后台保存配置。而 `FILE_DOWNLOAD_*` 及 `FILE_CACHE_MAX_SIZE_GB` / `FILE_CACHE_MIN_FREE_DISK_GB` / `FILE_CACHE_TTL_DAYS` 同样由管理后台「下载资源调度 / 缓存配置」以 **SystemConfig 热更新**为来源——**环境变量不是它们的来源**，上表默认值仅为参考。

@@ -9,6 +9,7 @@ import { FileService } from './file.service';
 import { FileAccessControlService } from './file-access-control.service';
 import { FileUploadConfigService } from './file-upload-config.service';
 import { File } from '../common/entities/file.entity';
+import { Tag } from '../common/entities/tag.entity';
 import { Folder } from '../common/entities/folder.entity';
 import { DownloadTask } from '../common/entities/download-task.entity';
 import { FileAccessLog } from '../common/entities/file-access-log.entity';
@@ -35,6 +36,7 @@ import { RateLimitModule } from '../common/services/rate-limit.module';
 import { MediaTicketModule } from '../common/services/media-ticket.module';
 import { PublicMediaAdmissionService } from '../common/services/public-media-admission.service';
 import { TagModule } from '../tag/tag.module';
+import { VideoMetaService } from './video-meta.service';
 import { ApiKeyModule } from '../api-key/api-key.module';
 // 阶段 4：文件回源接入账号池 + 上传成功后触发镜像（均为可选增强，关闭时行为不变）
 import { TelegramAccountPoolModule } from '../telegram-account-pool/telegram-account-pool.module';
@@ -45,7 +47,7 @@ import { ContentDedupeService } from './content-dedupe.service';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([File, Folder, FileAccessLog, BannedIP, ShareAudit, ShareLink, UploadTask, DownloadTask]),
+    TypeOrmModule.forFeature([File, Folder, FileAccessLog, BannedIP, ShareAudit, ShareLink, UploadTask, DownloadTask, Tag]),
     ConfigCacheModule,
     RateLimitModule,
     TagModule,
@@ -77,6 +79,7 @@ import { ContentDedupeService } from './content-dedupe.service';
   ],
   controllers: [FileController, ChunkUploadController, DownloadTaskController],
   providers: [
+    VideoMetaService,
     FileService,
     // M6 拆分：访问策略 / 密码 / IP 封禁域
     FileAccessControlService,

@@ -96,6 +96,21 @@ export class File {
   @Column({ type: 'varchar', length: 512, nullable: true, default: null })
   thumbnailPath: string | null;
 
+  /**
+   * 视频元数据（ffprobe 解析结果；simple-json 在 PG/SQLite 均落 text）。
+   * 仅对 video/* 写入，解析失败为 NULL。用于幂等判断与后续展示时长/分辨率。
+   */
+  @Column({ type: 'simple-json', nullable: true, default: null })
+  videoMeta: {
+    durationSeconds: number;
+    width: number;
+    height: number;
+    codec: string;
+    hasAudio: boolean;
+    bitrateKbps: number | null;
+    frameRate: number | null;
+  } | null;
+
   /** 所属文件夹 ID（null 表示位于用户网盘根目录） */
   @Index()
   @Column({ nullable: true })

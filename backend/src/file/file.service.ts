@@ -62,6 +62,7 @@ import { buildFileVersionETag, matchesIfRange } from '../common/utils/file-range
 import { QuotaService } from '../quota/quota.service';
 import { StorageService } from '../storage/storage.service';
 import { ContentDedupeService } from './content-dedupe.service';
+import { VideoMetaService } from './video-meta.service';
 import { parseByteRange } from '../common/utils/byte-range';
 import {
   RangeNotSatisfiableException,
@@ -197,6 +198,10 @@ export class FileService implements OnModuleInit {
     // 运行时由 FileModule 注入，缺失时跳过去重（等价于改造前行为）。
     @Optional() @Inject(ContentDedupeService)
     private readonly contentDedupe: ContentDedupeService | null = null,
+    // 视频元数据 → 自动标签（L1）。@Optional 同样为兼容单元测试的直接构造；
+    // 缺失时上传不受影响，只是没有自动标签。
+    @Optional() @Inject(VideoMetaService)
+    private readonly videoMetaService: VideoMetaService | null = null,
   ) {
   }
 
@@ -2201,7 +2206,12 @@ export class FileService implements OnModuleInit {
     file: File,
     options: { sourcePath?: string; sourceBuffer?: Buffer; allowRemoteSource?: boolean } = {},
   ): Promise<void> {
-    return this.thumbnailService.generateAndSaveVideoCover(file, options);
+    await this.thumbnailService.generateAndSaveVideoCover(file, options);
+    // L1 元数据 → 自动标签：与封面共用同一份本地文件，不额外回源；
+    // 失败静默（增值功能，绝不影响上传结果）
+    await this.videoMetaService
+      ?.analyze(file, { sourcePath: options.sourcePath, sourceBuffer: options.sourceBuffer })
+      .catch(() => null);
   }
 
   /**

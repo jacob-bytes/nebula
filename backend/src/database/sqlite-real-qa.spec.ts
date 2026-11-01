@@ -95,6 +95,8 @@ describe('真实 SQLite 数据源关键业务与并发 QA', () => {
       'SqliteAddFileContentHash1804200000000',
       // v0.8.1：补齐 SQLite 缺失的 file_tags 关联表（否则有文件即 500）
       'SqliteAddFileTags1804300000000',
+      // v0.25.0：视频元数据（files.videoMeta，L1 自动标签的幂等依据）
+      'SqliteAddFileVideoMeta1805000000000',
     ]);
 
     await dataSource.undoLastMigration();

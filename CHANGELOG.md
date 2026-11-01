@@ -6,6 +6,33 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.25.0] - 2026-11-01
+
+视频自动标签 L1：ffprobe 元数据 → 技术标签。
+
+### 新增
+
+- **上传后自动打技术标签**（`VIDEO_META_ENABLED`，默认开启）：
+  用 `ffprobe` 解析时长 / 分辨率 / 编码 / 音轨 / 码率 / 帧率，写入 `files.videoMeta`，
+  并生成三个 `自动·` 前缀的标签——画质（4K/1080p/720p/480p/SD）、编码（H.264/H.265/AV1/…）、
+  时长档（短视频/中等视频/长视频）。画质按**短边**判定，竖屏视频也能正确归到 1080p。
+- 分析复用封面生成时已有的本地文件（临时上传文件或缓存文件），**不额外回源**；
+  与封面同一个调用点，三种上传路径（同步 / 异步 / 分片）自动覆盖。
+- 幂等：标签按名称复用、已关联跳过；元数据落库后可用于后续「重新扫描」。
+- 失败静默（`ffprobe` 缺失/超时/解析失败只记录日志），绝不阻塞上传。
+- 新配置：`FFPROBE_PATH`（默认 `ffprobe`，随 ffmpeg 安装）、`VIDEO_META_ENABLED`。
+
+### 迁移
+
+- `files.videoMeta`（PostgreSQL 版 + SQLite 版），`docs/sqlite-real-qa` 的迁移清单同步更新。
+
+### 测试
+
+- `video-meta.spec.ts`：解析与标签推导 9 条（无视频流/坏 JSON/未知编码/`0/0` 帧率/竖屏/边界时长）。
+- `video-meta.service.spec.ts`：**真实 SQLite** 5 条（落库、打标、重复分析幂等、开关关闭、
+  非视频跳过、解析失败静默）——顺带守住历史坑：`file_tags` 若用裸 SQL 的 `$1` 占位符在 SQLite 会失败。
+- 后端 jest 1639 通过；新建库迁移实测生成 `videoMeta` 列；应用启动健康检查 200。
+
 ## [0.24.2] - 2026-11-01
 
 README 快速开始补充「任选其一」说明。
