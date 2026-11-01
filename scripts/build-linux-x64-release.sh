@@ -27,10 +27,25 @@ fi
 
 # 版本发布说明必须随包交付：RELEASE.txt 会附带给发布与运维查阅（变更内容、兼容边界、
 # 备份与回退要求）。缺失时立即失败，避免先花掉整轮构建再产出无说明的制品。
-RELEASE_NOTES="$ROOT_DIR/docs/release-notes/v${VERSION}.md"
-if [[ ! -f "$RELEASE_NOTES" ]]; then
-  echo "错误：缺少版本发布说明 $RELEASE_NOTES；拒绝生成发行材料。" >&2
-  exit 1
+#
+# 来源：优先 CHANGELOG.md 中该版本的小节（单一事实源，发版时必然会写），
+# 兼容旧的 docs/release-notes/v<版本>.md。两者都没有则失败。
+# 用变量承载而不是临时文件：后续会 rm -rf "$WORK_DIR"，
+# 写到工作目录里会被自己清掉。
+RELEASE_NOTES_TEXT=$(awk -v ver="${VERSION}" '
+  $0 ~ "^## \\[" ver "\\]" { inside = 1; print; next }
+  inside && /^## \[/ { inside = 0 }
+  inside { print }
+' "$ROOT_DIR/CHANGELOG.md")
+
+if [[ -z "$RELEASE_NOTES_TEXT" ]]; then
+  LEGACY_NOTES="$ROOT_DIR/docs/release-notes/v${VERSION}.md"
+  if [[ -f "$LEGACY_NOTES" ]]; then
+    RELEASE_NOTES_TEXT=$(cat "$LEGACY_NOTES")
+  else
+    echo "错误：CHANGELOG.md 中找不到 v${VERSION} 的小节，且不存在 ${LEGACY_NOTES}；拒绝生成发行材料。" >&2
+    exit 1
+  fi
 fi
 
 rm -rf "$WORK_DIR"
@@ -162,7 +177,7 @@ bash "$ROOT_DIR/scripts/release/validate-release.sh" "$OUTPUT_DIR/$ARCHIVE_NAME"
 {
   printf 'NEBULA v%s\nTarget: Linux x86_64\nNode.js: %s\nBundled Telegram Bot API: 10.2-nebula.1\n\n' \
     "$VERSION" "$NODE_VERSION"
-  cat "$RELEASE_NOTES"
+  printf '%s\n' "$RELEASE_NOTES_TEXT"
 } > "$OUTPUT_DIR/RELEASE.txt"
 
 echo "发布完成：$OUTPUT_DIR"

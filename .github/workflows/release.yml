@@ -6,10 +6,13 @@ name: Release
 #         重解包验证 → 发布非 draft、非 prerelease 的稳定 Release。
 #   tag、包名、清单、包内 VERSION 任一不一致即失败。
 # 私钥来源：仓库 secret RELEASE_SIGNING_KEY（RSA-3072 PEM）；公钥已提交仓库。
+# 触发方式：只保留手动 dispatch。
+#
+# 原先 tag 推送即触发正式发布，但正式发布要求仓库 secret RELEASE_SIGNING_KEY
+# （RSA-3072 私钥）与 scripts/release/update-public-key.pem 配对；本仓库尚未配置
+# 自己的签名密钥，tag 触发的流水线会在签名步骤必然失败，把每次发版都变成红灯。
+# 配置好密钥后再按需恢复 `push: tags` 触发（见 docs/deployment.md 的发行说明）。
 on:
-  push:
-    tags:
-      - 'v*.*.*'
   workflow_dispatch:
     inputs:
       publish:
@@ -34,7 +37,7 @@ jobs:
   publish:
     name: Build, sign and publish stable release
     needs: quality
-    if: ${{ github.event_name == 'push' || inputs.publish == true }}
+    if: ${{ inputs.publish == true }}
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:

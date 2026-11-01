@@ -33,22 +33,22 @@ restart_bot_if_present() {
 
 rollback_after_activation_failure() {
   local reason=$1
-  [[ -n "$PREVIOUS" ]] || die "$EXIT_ROLLBACK" "$reason，且没有可回退版本。"
+  [[ -n "$PREVIOUS" ]] || die "$EXIT_ROLLBACK" "${reason}，且没有可回退版本。"
   report_phase rolling_back
   ln -s "$PREVIOUS" "$INSTALL_ROOT/.current.rollback"
   mv -Tf "$INSTALL_ROOT/.current.rollback" "$CURRENT_LINK"
   restart_bot_if_present
-  systemctl restart "$SERVICE" || die "$EXIT_ROLLBACK" "$reason，且回退后的服务也无法启动。"
+  systemctl restart "$SERVICE" || die "$EXIT_ROLLBACK" "${reason}，且回退后的服务也无法启动。"
   WRITE_STOPPED=0
   # M4：代码已切回，但刚执行的迁移不会自动回退——数据库仍可能是新版本 schema。
   # 对未声明可安全回退的版本（缺失/false），绝不能报告为「完全成功」：
   # 以非零退出并给出人工恢复指引，避免 runner 或健康检查误判。
   if [[ "${ROLLBACK_SAFE:-unknown}" != 'true' ]]; then
     record_state "rollback code-only version=$(read_version "$PREVIOUS/VERSION") from=$NEW_VERSION rollback_safe=${ROLLBACK_SAFE:-unknown}"
-    die "$EXIT_ROLLBACK" "$reason，已切回旧代码（$(read_version "$PREVIOUS/VERSION")），但本版本声明程序回退不安全（programRollbackSafe=${ROLLBACK_SAFE:-unknown}），数据库仍停留在新版本 schema。
-请人工恢复：1) systemctl stop $SERVICE；2) 从 $INSTALL_ROOT/backups/<时间戳>/ 恢复数据库备份；3) 核对 Telegram Bot API 工作目录（禁止清空/重命名）与 $ENV_FILE；4) 再启动服务并验证健康检查。"
+    die "$EXIT_ROLLBACK" "${reason}，已切回旧代码（$(read_version "$PREVIOUS/VERSION")），但本版本声明程序回退不安全（programRollbackSafe=${ROLLBACK_SAFE:-unknown}），数据库仍停留在新版本 schema。
+请人工恢复：1) systemctl stop ${SERVICE}；2) 从 $INSTALL_ROOT/backups/<时间戳>/ 恢复数据库备份；3) 核对 Telegram Bot API 工作目录（禁止清空/重命名）与 ${ENV_FILE}；4) 再启动服务并验证健康检查。"
   fi
-  die "$EXIT_OPERATION" "$reason，已成功回退。"
+  die "$EXIT_OPERATION" "${reason}，已成功回退。"
 }
 
 # P1-06 停写窗口：迁移、切链在服务停止状态下完成，防止窗口期写入遗漏进
@@ -88,7 +88,7 @@ report_phase prechecking
 [[ -d "$INSTALL_ROOT" ]] || die "$EXIT_PRECHECK" "安装根目录不存在：$INSTALL_ROOT"
 # A service pinned to a concrete release cannot be atomically upgraded by moving current.
 systemctl cat "$SERVICE" 2>/dev/null | grep -Fq "$CURRENT_LINK/" \
-  || die "$EXIT_PRECHECK" "服务单元未使用 $CURRENT_LINK；拒绝非原子升级。请先迁移为 current 符号链接部署。"
+  || die "$EXIT_PRECHECK" "服务单元未使用 ${CURRENT_LINK}；拒绝非原子升级。请先迁移为 current 符号链接部署。"
 bash "$SCRIPT_DIR/validate-release.sh" "$ARCHIVE" "$SUMS"
 
 # M4：读取已验签清单中的程序回退安全标志（fail-closed：缺失/非法一律视为 unknown）。
@@ -96,7 +96,7 @@ bash "$SCRIPT_DIR/validate-release.sh" "$ARCHIVE" "$SUMS"
 ROLLBACK_SAFE=$(release_rollback_safe_flag "$(dirname "$SUMS")")
 log "程序回退安全标志（programRollbackSafe）：$ROLLBACK_SAFE"
 if [[ "$ROLLBACK_SAFE" != 'true' ]]; then
-  log "WARN: 本版本未声明可安全回退（programRollbackSafe=$ROLLBACK_SAFE）；升级失败时不会自动切回旧代码，需按人工指引先恢复数据库备份。"
+  log "WARN: 本版本未声明可安全回退（programRollbackSafe=${ROLLBACK_SAFE}）；升级失败时不会自动切回旧代码，需按人工指引先恢复数据库备份。"
 fi
 
 STAGE=$(mktemp -d "$INSTALL_ROOT/.nebula-stage.XXXXXX")
@@ -131,13 +131,13 @@ mv "$CANDIDATE" "$TARGET"
 # mv 就位断言：关键运行文件缺失说明移动不完整，立即停止（current 仍未切换）。
 for required in "$TARGET/VERSION" "$TARGET/backend/dist/main.js" "$TARGET/runtime/bin/node" \
   "$TARGET/backend/node_modules/typeorm/cli.js" "$TARGET/backend/node_modules/dotenv/config.js"; do
-  [[ -e "$required" ]] || die "$EXIT_OPERATION" "新版本就位校验失败（缺少 $required）；未切换 current。"
+  [[ -e "$required" ]] || die "$EXIT_OPERATION" "新版本就位校验失败（缺少 ${required}）；未切换 current。"
 done
 log "新版本已就位：$TARGET"
 # M4：把已验签的发布清单持久化进发行目录，供 rollback.sh 判断能否安全自动回退。
 if [[ -f "$MANIFEST_SRC" && ! -L "$MANIFEST_SRC" ]]; then
   cp -- "$MANIFEST_SRC" "$TARGET/release-manifest.json"
-  log "已记录发布清单：$TARGET/release-manifest.json（programRollbackSafe=$ROLLBACK_SAFE）"
+  log "已记录发布清单：$TARGET/release-manifest.json（programRollbackSafe=${ROLLBACK_SAFE}）"
 else
   log "WARN: 未提供 release-manifest.json；回滚脚本将按 fail-closed 拒绝自动回退。"
 fi
@@ -151,7 +151,7 @@ fi
 
 # Runtime data remains outside releases. Refuse implicit migration/copying of protected paths.
 for protected in "$INSTALL_ROOT/telegram-bot-api/data" "$INSTALL_ROOT/backend/.env" "$INSTALL_ROOT/.env" "$INSTALL_ROOT/redis" "$INSTALL_ROOT/uploads" "$INSTALL_ROOT/logs" "$INSTALL_ROOT/cache"; do
-  [[ -e "$protected" ]] || log "WARN: 受保护状态不存在：$protected（不会创建或复制）"
+  [[ -e "$protected" ]] || log "WARN: 受保护状态不存在：${protected}（不会创建或复制）"
 done
 report_phase activating
 ln -s "releases/$NEW_VERSION" "$INSTALL_ROOT/.current.new"
@@ -181,4 +181,4 @@ if ! NEBULA_EXPECTED_VERSION="$NEW_VERSION" NEBULA_API_URL="${NEBULA_API_URL:-ht
   rollback_after_activation_failure '健康检查失败'
 fi
 record_state "upgrade ok version=$NEW_VERSION previous=$PREVIOUS"
-log "OK: 已备份、迁移并原子切换到 $NEW_VERSION；运行时 Telegram 数据、数据库与 .env 未被移动或覆盖。"
+log "OK: 已备份、迁移并原子切换到 ${NEW_VERSION}；运行时 Telegram 数据、数据库与 .env 未被移动或覆盖。"

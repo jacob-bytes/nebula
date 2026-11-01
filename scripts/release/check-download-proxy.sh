@@ -150,7 +150,7 @@ check_nginx_config() {
   local text='' source=''
   if [[ -n "${NEBULA_NGINX_CONF:-}" ]]; then
     if [[ ! -r "$NEBULA_NGINX_CONF" ]]; then
-      warn "NEBULA_NGINX_CONF 不可读：$NEBULA_NGINX_CONF（跳过静态校验）"
+      warn "NEBULA_NGINX_CONF 不可读：${NEBULA_NGINX_CONF}（跳过静态校验）"
       SKIPPED=$((SKIPPED + 1))
       return 0
     fi
@@ -169,9 +169,9 @@ check_nginx_config() {
 
   local problems
   if problems=$(verify_nginx_text "$text"); then
-    ok "Nginx 下载端点配置校验通过（来源：$source）"
+    ok "Nginx 下载端点配置校验通过（来源：${source}）"
   else
-    mark_failed "Nginx 下载端点配置不满足直通要求（来源：$source）："
+    mark_failed "Nginx 下载端点配置不满足直通要求（来源：${source}）："
     printf '%s' "$problems" | sed '/^$/d' | sed 's/^/       - /' >&2
   fi
 }

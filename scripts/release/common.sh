@@ -45,7 +45,7 @@ read_version() { local file=$1 value; [[ -f "$file" ]] || die "$EXIT_VERIFY" "�
 assert_no_protected_payload() {
   local dir=$1 path
   for path in telegram-bot-api/data backend/.env .env redis uploads logs cache; do
-    [[ ! -e "$dir/$path" ]] || die "$EXIT_PRECHECK" "候选发行包包含受保护路径 $path；拒绝覆盖。"
+    [[ ! -e "$dir/$path" ]] || die "$EXIT_PRECHECK" "候选发行包包含受保护路径 ${path}；拒绝覆盖。"
   done
   if find "$dir" -type f \( -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.db' -o -name 'td.binlog*' -o -name 'db.sqlite*' \) -print -quit | grep -q .; then
     die "$EXIT_PRECHECK" '候选发行包包含数据库或 Telegram 持久化文件；拒绝覆盖。'
@@ -99,12 +99,12 @@ require_rollback_safe() {
     return 0
   fi
   if [[ "${NEBULA_ACK_DB_RESTORED:-0}" == '1' ]]; then
-    log "WARN: 已按 NEBULA_ACK_DB_RESTORED=1 显式确认数据库已恢复，继续代码回退（programRollbackSafe=$flag，from=$from_version）。"
+    log "WARN: 已按 NEBULA_ACK_DB_RESTORED=1 显式确认数据库已恢复，继续代码回退（programRollbackSafe=${flag}，from=${from_version}）。"
     return 0
   fi
-  die "$EXIT_PRECHECK" "拒绝自动回退：当前版本 $from_version 的程序回退安全标志为 $flag（仅 true 允许脚本自动切回旧代码）。
+  die "$EXIT_PRECHECK" "拒绝自动回退：当前版本 $from_version 的程序回退安全标志为 ${flag}（仅 true 允许脚本自动切回旧代码）。
 该标志缺失/false 表示本版本可能包含不可逆数据库迁移：切回旧代码会让数据库停留在新 schema 上。
-请按以下步骤人工恢复后再回退（目标版本目录：$target_dir）：
+请按以下步骤人工恢复后再回退（目标版本目录：${target_dir}）：
   1) systemctl stop ${NEBULA_SERVICE:-nebula.service}
   2) 从 $INSTALL_ROOT/backups/<时间戳>/ 恢复数据库备份（PostgreSQL: pg_restore；SQLite: 停服后原子替换数据库文件）
   3) 核对 Telegram Bot API 工作目录（--dir，与 file_id 强绑定，禁止清空/重命名）与应用 .env（尤其 DB_* 连接项）

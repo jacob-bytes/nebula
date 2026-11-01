@@ -133,4 +133,4 @@ console.log(`清单已生成：${output}`);
 NODE
 
 [[ -f "$OUTPUT_DIR/release-manifest.json" ]] || die "$EXIT_OPERATION" '清单生成失败。'
-log "OK: release-manifest.json 已生成（v$VERSION）。"
+log "OK: release-manifest.json 已生成（v${VERSION}）。"

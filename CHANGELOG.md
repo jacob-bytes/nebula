@@ -6,6 +6,37 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.15.3] - 2026-11-01
+
+修复 CI 红灯：shell 变量解析、发行说明来源、DI 守卫误判。
+
+### 修复
+
+- **shell 中 `$VAR` 紧跟中文/全角标点**：bash 在 UTF-8 locale 下会把该字符并入变量名，
+  `set -u` 下直接报 `unbound variable` 并以错误码退出。`check-download-proxy.sh` 因此
+  在 CI 失败；`upgrade.sh` / `start.sh` 等运行期脚本也有同类隐患（共 28 处），
+  统一改为 `${VAR}` 花括号形式。
+- **发行构建强制要求 `docs/release-notes/v<版本>.md`**：该目录在 v0.1.0 移除后，
+  ZIP 打包与 Release 流水线必然失败。改为**从 `CHANGELOG.md` 抽取同版本小节**
+  （单一事实源），保留旧路径作为回退，两者都缺失才失败。
+- **DI token 静态守卫误判异常类**：`AccountUploadUnavailableError` 的构造函数参数没有
+  类型标注，被规则判为「无法解析注入 token」，导致整个后端质量门禁失败。
+  规则收敛为**只检查 class 上带装饰器（会被容器实例化）的类**，并新增「非 DI 类不参与
+  判定但确实被解析到」的用例，避免退化成空扫。
+
+### 变更
+
+- **Release 工作流改为仅手动触发**：正式发布要求 `RELEASE_SIGNING_KEY` secret 与
+  `scripts/release/update-public-key.pem` 配对，本仓库尚未配置自己的签名密钥，
+  tag 推送触发的流水线会在签名步骤必然失败。配置密钥后可按需恢复 `push: tags`。
+
+### 验证
+
+- 后端 jest 1590 passed / 0 failed（含新增用例）；`gate:sqlite` 通过；
+  覆盖率 65.91 / 54.17 / 61.06 / 67.36（阈值 60/45/55/60）。
+- `scripts/release/tests` 三个套件在 Linux 语义下通过；`rollback-safe-flag` 在 macOS
+  本地因 BSD `realpath` 不支持 `-e` 而失败，属本机环境差异，CI（Ubuntu）不受影响。
+
 ## [0.15.2] - 2026-11-01
 
 仓库精简：删掉未使用的 516KB 图标精灵与生成的构建产物。

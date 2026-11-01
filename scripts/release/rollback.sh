@@ -32,5 +32,5 @@ if ! wait_app_ready || ! NEBULA_EXPECTED_VERSION="$VERSION" "$TARGET/scripts/rel
   die "$EXIT_OPERATION" '回退健康检查失败，已恢复原版本。'
 fi
 record_state "rollback ok version=$VERSION previous=$(read_version "$CURRENT/VERSION")"
-log "OK: 已原子回退至 $VERSION；未处理 Telegram 数据、数据库或 .env。"
+log "OK: 已原子回退至 ${VERSION}；未处理 Telegram 数据、数据库或 .env。"
 log "提示：Bot API 工作目录（--dir）与 file_id 强绑定，未被删除/重命名；数据库仍为回退前的状态，需人工确认是否与 $VERSION 匹配。"

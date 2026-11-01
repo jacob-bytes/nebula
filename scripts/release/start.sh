@@ -226,7 +226,7 @@ redis_configure_fallback_port() {
   # 端口切换后必须同步检测到的端点，否则后续探测仍按 6379 写入 .env，应用将连错端口。
   REDIS_DETECTED_HOST=127.0.0.1
   REDIS_DETECTED_PORT=$port
-  warn "6379 已被其他进程占用且无法作为 Redis 使用，已将系统 Redis 切换到空闲端口 $REDIS_FALLBACK_PORT。"
+  warn "6379 已被其他进程占用且无法作为 Redis 使用，已将系统 Redis 切换到空闲端口 ${REDIS_FALLBACK_PORT}。"
 }
 
 redis_reuse_port_owner() {
@@ -392,7 +392,7 @@ configure_redis_manual() {
     if [[ "$output" == *PONG* ]]; then
       break
     fi
-    warn "无法连接 Redis $host:$port，返回：${output:-无响应}"
+    warn "无法连接 Redis $host:${port}，返回：${output:-无响应}"
     warn '首次部署必须连接到可用 Redis，请检查服务后重新填写。'
   done
   prompt_value db 'Redis 数据库编号' '0'
@@ -660,7 +660,7 @@ prepare_permissions() {
   local probe=$ROOT_DIR
   while [[ "$probe" != '/' ]]; do
     if ! runuser -u "$service_user" -- test -x "$probe"; then
-      die "服务用户 $service_user 无法访问目录 $probe。请将发布包移到该用户可访问的位置后重试。"
+      die "服务用户 $service_user 无法访问目录 ${probe}。请将发布包移到该用户可访问的位置后重试。"
     fi
     probe=$(dirname "$probe")
   done
@@ -730,7 +730,7 @@ manage_logs() {
 }
 
 manage_repair_units() {
-  [[ -s "$APP_ENV" ]] || die "缺少 $APP_ENV，无法修复服务单元。"
+  [[ -s "$APP_ENV" ]] || die "缺少 ${APP_ENV}，无法修复服务单元。"
   ENABLE_BOT_API=false
   [[ -s "$BOT_ENV" ]] && ENABLE_BOT_API=true
   prepare_permissions "$SERVICE_USER"

@@ -9,6 +9,10 @@ import * as ts from 'typescript';
  * 只会发出 `Object`，Nest 拿不到服务类 token；`@Optional()` 又把解析失败静默降级成 `null`，
  * 于是「账号池增强能力全部不生效但不报错」可以长期潜伏（见 `bot-account-pool-di-wiring.spec.ts`）。
  *
+ * 适用范围：只检查**会被 DI 容器实例化的类**（class 上带装饰器，如 @Injectable()/@Controller()）。
+ * 异常类与值对象由代码 `new` 出来，不经过容器，参数没有注入 token 是正常的
+ * （例：`extends ServiceUnavailableException` 的错误类）。
+ *
  * 判定规则（只看构造参数，误伤成本必须为零）：
  * 1. 类型是联合类型（如 `X | null`）或没有类型标注 → `design:paramtypes` 得到 `Object`，
  *    这类参数**必须**有显式 `@Inject*` 装饰器；
@@ -68,8 +72,19 @@ function scanSource(label: string, text: string): ScanResult {
     explicitTokenParams: 0,
   };
 
+  /**
+   * 该类是否会被 DI 容器实例化：class 上带任意装饰器即视为是。
+   * 没有装饰器的类由代码直接 new（异常、值对象），不存在注入语义。
+   */
+  const isDiManagedClass = (node: ts.ConstructorDeclaration): boolean => {
+    const parent = node.parent;
+    if (!parent || !ts.isClassDeclaration(parent)) return false;
+    const decorators = ts.canHaveDecorators(parent) ? ts.getDecorators(parent) : undefined;
+    return (decorators?.length ?? 0) > 0;
+  };
+
   const visit = (node: ts.Node): void => {
-    if (ts.isConstructorDeclaration(node)) {
+    if (ts.isConstructorDeclaration(node) && isDiManagedClass(node)) {
       for (const param of node.parameters) {
         result.constructorParams += 1;
 
@@ -128,6 +143,13 @@ class Bad {
   ) {}
 }`;
 
+const NON_DI_SAMPLE = `
+class UploadUnavailableError extends Error {
+  constructor(readonly admissionOnly = false, readonly retryAfterMs = 5000) {
+    super('busy');
+  }
+}`;
+
 const GOOD_SAMPLE = `
 @Service()
 class Good {
@@ -182,5 +204,12 @@ describe('构造参数注入 token 静态守卫', () => {
     expect(good.constructorParams).toBe(5);
     expect(good.optionalParams).toBe(4);
     expect(good.explicitTokenParams).toBe(2);
+  });
+
+  it('非 DI 类（异常/值对象）不参与判定，但确实被解析到', () => {
+    const error = scanSource('error.ts', NON_DI_SAMPLE);
+    expect(error.violations).toEqual([]);
+    // 防止"没扫到所以没违规"的假安全
+    expect(error.constructorParams).toBe(0);
   });
 });

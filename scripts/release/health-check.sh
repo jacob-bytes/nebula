@@ -17,7 +17,7 @@ if systemctl cat "$BOT_SERVICE" >/dev/null 2>&1; then systemctl is-active --quie
 health=$(api_get health 2>/dev/null || true)
 [[ "$health" == *'"status":"ok"'* && "$health" == *'"database":"ok"'* ]] || fail '后端 /api/health 未返回就绪状态'
 version=$(api_get version 2>/dev/null || true)
-[[ "$version" == *"\"version\":\"$EXPECTED_VERSION\""* ]] || fail "后端版本不匹配（期望 $EXPECTED_VERSION）"
+[[ "$version" == *"\"version\":\"$EXPECTED_VERSION\""* ]] || fail "后端版本不匹配（期望 ${EXPECTED_VERSION}）"
 # Do not accept an SPA fallback: a frontend check must retrieve actual index markup.
 frontend=$(curl --fail --silent --show-error --max-time "${NEBULA_HTTP_TIMEOUT:-5}" "${NEBULA_FRONTEND_URL:-http://127.0.0.1:3000/}" 2>/dev/null || true)
 [[ "$frontend" == *'<html'* || "$frontend" == *'<!doctype html'* || "$frontend" == *'<!DOCTYPE html'* ]] || fail '前端首页不可用或未返回 HTML'
