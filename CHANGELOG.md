@@ -6,6 +6,25 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.6] - 2026-11-01
+
+修复一键安装取到「尚未构建产物」的版本（下载 404）。
+
+### 修复
+
+- **安装脚本的版本解析改为「只接受真的带发行包的最新 Release」**：
+  GitHub 的 `releases/latest` 会把「只有发版说明」的 Release 也算作最新——本项目的流水线是
+  `Release notes` 先建说明、`Release` 再构建产物，两者有时间差，直接取 latest 会拿到
+  尚未构建完成的 tag（真实环境报 `curl: (22) 404`）。
+  现在按时间倒序遍历 Release，逐个 HEAD 探测 `nebula-v<ver>-linux-x64.zip` 是否存在，命中即用。
+- 显式 `--version` 指定仍在构建中的版本时，先探测再下载，并给出可操作提示，
+  不再抛出裸的 curl 404。
+
+### 测试
+
+- 新增 `scripts/release/tests/install-resolver.test.sh`：用 PATH 桩替换 curl，
+  离线验证「跳过无产物版本」「全部无产物时返回失败」两条路径（2/2）。
+
 ## [0.29.5] - 2026-11-01
 
 修复一键安装在真实环境首次部署失败（`start.sh` 路径假设错误）。

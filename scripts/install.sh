@@ -110,10 +110,12 @@ if [[ -z "$VERSION" ]]; then
     VERSION=$(basename "$ARCHIVE" | sed -n 's/^nebula-v\(.*\)-linux-x64\.zip$/\1/p')
     [[ -n "$VERSION" ]] || die "无法从文件名推断版本：${ARCHIVE}（请显式传 --version）"
   else
-    log '查询最新正式 Release…'
-    VERSION=$(curl -fsSL --max-time 30 "https://api.github.com/repos/$REPO/releases/latest" \
-      | sed -n 's/.*"tag_name": *"v\{0,1\}\([^"]*\)".*/\1/p' | head -1)
-    [[ -n "$VERSION" ]] || die '无法从 GitHub API 获取最新版本（可改用 --version 或 --archive）'
+    log '查询最新正式 Release（跳过尚未构建出产物的版本）…'
+    VERSION=$(resolve_version_with_asset) || VERSION=''
+    if [[ -z "$VERSION" ]]; then
+      die '找不到包含发行包的最新 Release（可能都在构建中）。可用 --version 指定版本，或稍后重试'
+    fi
+    log "选用版本：$VERSION"
   fi
 fi
 [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || die "版本号不合法：$VERSION"
@@ -134,6 +136,27 @@ ZIP="$WORK/nebula-v$VERSION-linux-x64.zip"
 SUMS="$WORK/SHA256SUMS"
 SIG="$WORK/SHA256SUMS.sig"
 
+# 取「确实带发行包」的最新版本。
+#
+# GitHub 的 releases/latest 会把「只有发版说明」的 Release 也算作最新——我们的流水线里
+# Release notes 建说明、Release 构建产物，两者有时间差，直接取 latest 会 404。
+# 这里按时间倒序遍历 Release，逐个用 HEAD 探测 zip 是否存在，命中即返回。
+resolve_version_with_asset() {
+  local tags v
+  tags=$(curl -fsSL --max-time 30 "https://api.github.com/repos/$REPO/releases?per_page=30" 2>/dev/null \
+    | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v?[0-9]+\.[0-9]+\.[0-9]+"' \
+    | sed -E 's/.*"v?([0-9]+\.[0-9]+\.[0-9]+)"$/\1/')
+  [[ -n "$tags" ]] || return 1
+  for v in $tags; do
+    if curl -fsIL --max-time 25 -o /dev/null \
+      "https://github.com/$REPO/releases/download/v$v/nebula-v$v-linux-x64.zip" 2>/dev/null; then
+      printf '%s' "$v"
+      return 0
+    fi
+  done
+  return 1
+}
+
 fetch() { # url dest
   log "下载 $(basename "$2")"
   curl -fsSL --retry 3 --max-time 300 -o "$2" "$1" || die "下载失败：$1"
@@ -152,6 +175,10 @@ if [[ -n "$ARCHIVE" ]]; then
   cp -f "$ASSET_BASE/SHA256SUMS.sig" "$SIG" 2>/dev/null || true
 else
   BASE="https://github.com/$REPO/releases/download/$TAG"
+  # 指定版本可能仍在构建：先探测，避免用户看到裸的 curl 404
+  if ! curl -fsIL --max-time 25 -o /dev/null "$BASE/nebula-v$VERSION-linux-x64.zip" 2>/dev/null; then
+    die "v$VERSION 还没有可下载的发行包（可能仍在构建）。可改用上一个已发布版本，或稍后重试"
+  fi
   fetch "$BASE/nebula-v$VERSION-linux-x64.zip" "$ZIP"
   fetch "$BASE/SHA256SUMS" "$SUMS"
   fetch "$BASE/SHA256SUMS.sig" "$SIG"
