@@ -230,9 +230,20 @@ jobs:
           tests=(scripts/release/tests/*.test.sh)
           bash -n "${tests[@]}"
           shellcheck --severity=warning "${tests[@]}"
+          # 逐个跑并捕获输出：失败时把最后 15 行写成 check-run 注解。
+          # CI 日志需要仓库权限，而注解可通过公开 API 读取——无凭据也能定位失败原因。
           for test_file in "${tests[@]}"; do
             printf '==> %s\n' "$test_file"
-            bash "$test_file"
+            out=''
+            if ! out=$(bash "$test_file" 2>&1); then
+              printf '%s\n' "$out" >&2
+              while IFS= read -r line; do
+                [[ -n "$line" ]] || continue
+                printf '::error title=%s::%s\n' "$(basename "$test_file")" "$line"
+              done < <(printf '%s\n' "$out" | tail -15)
+              exit 1
+            fi
+            printf '%s\n' "$out"
           done
 
       - name: Enforce release payload state exclusions
