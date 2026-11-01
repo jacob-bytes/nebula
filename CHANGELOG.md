@@ -6,6 +6,18 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.13] - 2026-11-01
+
+修复「curl 能通、应用连不上」的 DNS/IPv6 问题。
+
+### 修复
+
+- **DNS 解析改为 IPv4 优先**（`dns.setDefaultResultOrder('ipv4first')`）。
+  真实案例：服务器 `curl https://api.telegram.org` 返回 `{"ok":true,...}`，但向导里
+  「发送测试消息」报「文件服务暂时不可用」——VPS 常见「配了不通的 IPv6」，Node 默认先解析
+  AAAA 且只试一次就失败，而 curl 的 Happy Eyeballs 会自动回退到 IPv4。
+  该设置同时影响上传/下载回源等所有 Node 侧出站请求。
+
 ## [0.29.12] - 2026-11-01
 
 修复向导里的失败原因被通用文案覆盖。

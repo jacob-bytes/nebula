@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { CsrfGuard } from './common/guards/csrf.guard';
+import { setDefaultResultOrder } from 'node:dns';
 import { setupOpenApi } from './common/openapi';
 import { ShareService } from './share/share.service';
 import { injectShareMeta } from './share/share-og';
@@ -50,6 +51,16 @@ function installProcessSafetyNet(): void {
 async function bootstrap() {
   // 先装进程级兜底，再做任何可能抛错的事（含文件日志初始化）
   installProcessSafetyNet();
+
+  // DNS 解析顺序改为 IPv4 优先。
+  // 真实案例：服务器 `curl https://api.telegram.org` 正常，但应用侧连不上——VPS 常给
+  // 主机配一个不通的 IPv6，Node 默认先解析 AAAA 并直接失败，而 curl 有 Happy Eyeballs
+  // 会自动回退到 IPv4。这一行让 Node 也不再"只试一次 IPv6"。
+  try {
+    setDefaultResultOrder('ipv4first');
+  } catch {
+    // 老版本 Node 不支持时忽略：行为回到默认，不影响启动
+  }
   const fileLogger = new FileLogger();
   const logger = new Logger('Bootstrap');
 
