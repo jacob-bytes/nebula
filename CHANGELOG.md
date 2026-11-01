@@ -6,6 +6,31 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.17.0] - 2026-11-01
+
+分享页 Open Graph 卡片 + 后台配额管理界面。
+
+### 新增
+
+- **分享页服务端 OG 注入**：`/s/:token` 是 SPA 路由，爬虫不执行 JS，此前分享链接在
+  Telegram/微信里是一片白卡片。现在服务端按 token 查元数据并替换 `<title>` 与
+  `og:*` 标签；密码保护与已失效的分享只给通用文案并加 `robots: noindex`，
+  不泄露文件名。取不到数据时退回通用 HTML，探测有 1.5s 超时兜底。
+- **OG 渲染器**（`share-og.ts`，纯函数）：HTML 属性全量转义（文件名是用户可控输入）、
+  区域替换避免出现两份 og 标签、缺少 `</head>` 时原样返回。8 个单测覆盖。
+- **分享卡封面** `frontend/public/og-cover.png`（1200×630）与 index.html 默认 OG 标签。
+- **后台配额管理**：用户列表新增「存储配额」列（继承/不限/自定义）与配额对话框，
+  显示已用/上限，支持三态切换与 GB 级自定义；`storageQuotaBytes` 加入后台列表 select。
+- `frontend/src/api/quota.ts` 增加 `getUserQuota` / `setUserQuota` / `setUsersQuotaBatch`。
+
+### 验证
+
+- 实测三种 token：公开分享注入真实标题与 `og:image`（无重复标签）、密码分享注入
+  通用文案 + noindex、不存在的 token 退回默认标签。
+- 配额接口实测 GET/PUT 与列表字段一致（5GB → 10GB）；对话框截图复核。
+- 前端 vitest 392 通过；后端 jest 1601 通过（`file-cache.service.spec.ts` 在并发满载时
+  偶发超时，单跑与二次全量均通过）。
+
 ## [0.16.0] - 2026-11-01
 
 交付与运维：本地 Bot API 进 Compose、多架构镜像、备份恢复、升级路径回归。

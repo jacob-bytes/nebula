@@ -34,7 +34,8 @@ export class UserService {
 
     const queryBuilder = this.userRepository
       .createQueryBuilder('user')
-      .select(['user.id', 'user.email', 'user.role', 'user.isBanned', 'user.emailVerified', 'user.lastLoginIP', 'user.lastLoginAt', 'user.createdAt'])
+      // storageQuotaBytes 供后台列表直接展示配额档位（NULL=继承默认，0=不限）
+      .select(['user.id', 'user.email', 'user.role', 'user.isBanned', 'user.emailVerified', 'user.storageQuotaBytes', 'user.lastLoginIP', 'user.lastLoginAt', 'user.createdAt'])
       .skip((page - 1) * limit)
       .take(limit)
       .orderBy('user.createdAt', 'DESC');

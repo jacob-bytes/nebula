@@ -10,6 +10,9 @@ import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { CsrfGuard } from './common/guards/csrf.guard';
+import { ShareService } from './share/share.service';
+import { injectShareMeta } from './share/share-og';
+import { readFileSync } from 'fs';
 import { generateXsrfToken, getXsrfCookieOptions, XSRF_COOKIE_NAME } from './common/utils/xsrf';
 import { validateEnv } from './config/env-validation';
 import { evaluateDeploymentPreflight } from './config/deployment-preflight';
@@ -196,6 +199,49 @@ async function bootstrap() {
       next();
     } catch (err) {
       next(err);
+    }
+  });
+
+  // 分享页 Open Graph 注入：`/s/:token` 是 SPA 路由，爬虫不执行 JS，
+  // 只能读到通用标题——分享链接在聊天软件里会显示成白卡片。
+  // 这里在 HTML 出口处替换 title 与 og:* 标签；取不到信息时原样返回通用 HTML。
+  const shareService = app.get(ShareService, { strict: false });
+  const spaIndexHtml = spaIndexExists ? readFileSync(spaIndexFile, 'utf8') : null;
+  // 此时端口尚未在下方读取（app.listen 才用），这里独立取值，避免依赖声明顺序
+  const publicAppUrl = (
+    process.env.APP_URL || `http://localhost:${process.env.APP_PORT || 3000}`
+  ).replace(/\/+$/, '');
+
+  expressApp.get(/^\/s\/([A-Za-z0-9_-]{4,64})\/?$/, async (req, res, next) => {
+    try {
+      if (!spaIndexHtml) return next();
+      const token = String((req.params as unknown as string[])[0] ?? '');
+      if (!token) return next();
+
+      // 探测超时兜底：分享元数据取不到时也要尽快返回页面，不能拖住首屏
+      const summary = await Promise.race([
+        shareService.getShareOgSummary(token).catch(() => null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 1500)),
+      ]);
+
+      const html = summary
+        ? injectShareMeta(spaIndexHtml, {
+            title: summary.title,
+            description: summary.description,
+            url: `${publicAppUrl}/s/${token}`,
+            siteName: '星云盘',
+            // 统一用品牌封面：文件缩略图需要 ticket 且可能被裁剪，不适合做分享预览
+            image: `${publicAppUrl}/og-cover.png`,
+            noindex: summary.noindex,
+          })
+        : spaIndexHtml;
+
+      // 短缓存：分享信息可能变化（改密码、失效），但不必每请求都查库
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.setHeader('Cache-Control', 'private, max-age=30');
+      return res.send(html);
+    } catch (err) {
+      return next(err);
     }
   });
 

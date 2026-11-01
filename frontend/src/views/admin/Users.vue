@@ -22,6 +22,14 @@
             {{ row.isBanned ? '已封禁' : '正常' }}
           </t-tag>
         </template>
+        <!-- 配额档位：NULL=继承默认，0=不限，其余为字节数 -->
+        <template #quota="{ row }">
+          <t-tag v-if="row.storageQuotaBytes === 0" theme="success" size="small">不限</t-tag>
+          <span v-else-if="row.storageQuotaBytes === null || row.storageQuotaBytes === undefined" class="quota-hint">
+            默认
+          </span>
+          <span v-else class="quota-value">{{ formatSize(row.storageQuotaBytes) }}</span>
+        </template>
         <template #lastLoginAt="{ row }">
           {{ row.lastLoginAt ? formatDate(row.lastLoginAt) : '从未登录' }}
         </template>
@@ -38,6 +46,15 @@
             @click="toggleBan(row)"
           >
             {{ row.isBanned ? '解封' : '封禁' }}
+          </t-button>
+          <!-- 配额对超级管理员同样生效（管理员也占用存储），因此不按角色隐藏 -->
+          <t-button
+            size="small"
+            theme="default"
+            variant="text"
+            @click="openQuotaDialog(row)"
+          >
+            配额
           </t-button>
           <t-button
             v-if="row.role === 'user'"
@@ -149,6 +166,41 @@
         </t-form-item>
       </t-form>
     </t-dialog>
+
+    <!-- 配额设置：三态语义与后端一致（继承默认 / 自定义 / 不限） -->
+    <t-dialog
+      v-model:visible="showQuotaDialog"
+      header="存储配额"
+      width="520px"
+      :on-confirm="saveQuota"
+      :confirm-btn="{ loading: quotaSaving }"
+    >
+      <div v-if="quotaTarget" class="quota-dialog">
+        <p class="quota-user">{{ quotaTarget.email }}</p>
+
+        <div class="quota-usage">
+          <span>已用 {{ formatSize(quotaInfo.usedBytes) }}</span>
+          <span class="quota-sep">/</span>
+          <span>{{ quotaInfo.unlimited ? '不限' : formatSize(quotaInfo.quotaBytes ?? 0) }}</span>
+        </div>
+
+        <t-radio-group v-model="quotaMode" class="quota-modes">
+          <t-radio value="inherit">继承全局默认</t-radio>
+          <t-radio value="custom">自定义上限</t-radio>
+          <t-radio value="unlimited">不限制</t-radio>
+        </t-radio-group>
+
+        <div v-if="quotaMode === 'custom'" class="quota-custom">
+          <t-input-number v-model="quotaGB" theme="normal" :min="1" :max="1024 * 1024" :step="1" />
+          <span class="quota-unit">GB</span>
+          <span class="quota-preview">= {{ formatSize(quotaGB * 1024 * 1024 * 1024) }}</span>
+        </div>
+
+        <p class="quota-tip">
+          继承默认时跟随系统配置；「不限制」不受全局配额约束。用量按未删除文件实时汇总。
+        </p>
+      </div>
+    </t-dialog>
   </div>
 </template>
 
@@ -159,7 +211,8 @@ import MessagePlugin from '@/utils/message';
 import { useMobile } from '../../composables/useMobile';
 import { api, useAuthStore } from '../../stores/auth';
 import { getErrorMessage } from '../../utils/error';
-import { formatDate as formatSafeDate } from '../../utils/format';
+import { formatDate as formatSafeDate, formatSize } from '../../utils/format';
+import { getUserQuota, setUserQuota, type AdminUserQuota } from '../../api/quota';
 
 // 当前登录用户（G15-25）：用于禁止管理员对自己执行封禁/删除，避免自我锁定
 const authStore = useAuthStore();
@@ -173,6 +226,8 @@ interface AdminUserRow {
   emailVerified: boolean;
   createdAt: string;
   lastLoginAt: string | null;
+  /** null=继承默认，0=不限，其余为字节数 */
+  storageQuotaBytes: number | null;
 }
 
 const users = ref<AdminUserRow[]>([]);
@@ -181,6 +236,63 @@ const page = ref(1);
 const searchEmail = ref('');
 const showCreateDialog = ref(false);
 const createForm = ref({ email: '', password: '', role: 'user' });
+
+// ---------- 配额设置 ----------
+const showQuotaDialog = ref(false);
+const quotaSaving = ref(false);
+const quotaTarget = ref<AdminUserRow | null>(null);
+const quotaMode = ref<'inherit' | 'custom' | 'unlimited'>('inherit');
+const quotaGB = ref(10);
+const quotaInfo = ref<AdminUserQuota>({ usedBytes: 0, quotaBytes: null, remainingBytes: null, unlimited: true });
+
+/** 由列表行的 storageQuotaBytes 推断三态，避免额外请求 */
+function modeFromQuota(value: number | null): 'inherit' | 'custom' | 'unlimited' {
+  if (value === undefined || value === null) return 'inherit';
+  if (value === 0) return 'unlimited';
+  return 'custom';
+}
+
+async function openQuotaDialog(row: AdminUserRow) {
+  quotaTarget.value = row;
+  quotaMode.value = modeFromQuota(row.storageQuotaBytes);
+  if (typeof row.storageQuotaBytes === 'number' && row.storageQuotaBytes > 0) {
+    quotaGB.value = Math.max(1, Math.round(row.storageQuotaBytes / 1024 / 1024 / 1024));
+  }
+  showQuotaDialog.value = true;
+  // 用量只在打开时查询一次（列表页不做 N+1 统计）
+  try {
+    quotaInfo.value = await getUserQuota(row.id);
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error) || '加载配额信息失败');
+  }
+}
+
+async function saveQuota(): Promise<boolean> {
+  const target = quotaTarget.value;
+  if (!target) return false;
+  const quotaBytes = quotaMode.value === 'inherit'
+    ? null
+    : quotaMode.value === 'unlimited'
+      ? 0
+      : Math.round(quotaGB.value * 1024 * 1024 * 1024);
+
+  quotaSaving.value = true;
+  try {
+    const updated = await setUserQuota(target.id, quotaBytes);
+    quotaInfo.value = updated;
+    // 同步列表行，避免为了刷新整页重新拉取
+    const row = users.value.find((item) => item.id === target.id);
+    if (row) row.storageQuotaBytes = quotaBytes;
+    MessagePlugin.success('配额已更新');
+    showQuotaDialog.value = false;
+    return true;
+  } catch (error: unknown) {
+    MessagePlugin.error(getErrorMessage(error) || '更新配额失败');
+    return false;
+  } finally {
+    quotaSaving.value = false;
+  }
+}
 
 // 创建用户前端校验（G15-26）：邮箱格式 + 密码最小长度 + 必填，避免空值/弱密码提交
 const createFormRules: Record<string, { required?: boolean; validator?: (val: string) => boolean; message?: string; type?: 'error' | 'warning' }[]> = {
@@ -221,9 +333,10 @@ const columns = [
   { colKey: 'email', title: '邮箱', width: '200' },
   { colKey: 'role', title: '角色', width: '120' },
   { colKey: 'isBanned', title: '状态', width: '100' },
+  { colKey: 'quota', title: '存储配额', width: '120' },
   { colKey: 'lastLoginAt', title: '最后登录', width: '150' },
   { colKey: 'createdAt', title: '注册时间', width: '150' },
-  { colKey: 'operations', title: '操作', width: '200' },
+  { colKey: 'operations', title: '操作', width: '300' },
 ];
 
 function getRoleText(role: string) {
@@ -253,6 +366,8 @@ function applyUsersResponse(response: { data?: unknown }) {
       role: String(user.role || 'user'),
       isBanned: Boolean(user.isBanned),
       emailVerified: Boolean(user.emailVerified),
+      // null=继承默认，0=不限，其余为字节数；缺失时按继承处理
+      storageQuotaBytes: typeof user.storageQuotaBytes === 'number' ? user.storageQuotaBytes : null,
       createdAt: typeof user.createdAt === 'string' ? user.createdAt : '',
       // 兼容旧接口的 lastLogin 字段，并将 null/缺失统一为空值。
       lastLoginAt: typeof user.lastLoginAt === 'string'
@@ -433,5 +548,57 @@ onMounted(fetchUsers);
     padding: 12px;
     margin-bottom: 10px;
   }
+}
+</style>
+
+<style scoped>
+.quota-hint {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.quota-value {
+  font-variant-numeric: tabular-nums;
+}
+.quota-dialog {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.quota-user {
+  font-weight: 600;
+  font-size: 14px;
+  word-break: break-all;
+}
+.quota-usage {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.quota-sep {
+  color: var(--text-tertiary);
+}
+.quota-modes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+}
+.quota-custom {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.quota-unit,
+.quota-preview {
+  font-size: 13px;
+  color: var(--text-tertiary);
+}
+.quota-tip {
+  font-size: 12px;
+  color: var(--text-tertiary);
+  line-height: 1.6;
 }
 </style>

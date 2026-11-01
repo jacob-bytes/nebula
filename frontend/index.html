@@ -10,6 +10,17 @@
     <meta name="referrer" content="no-referrer" />
     <title>星云盘</title>
 
+    <!-- 默认 Open Graph：非分享页的通用预览。
+         分享页（/s/:token）由后端在该标记处注入真实标题/描述后覆盖。 -->
+    <!--SHARE_META:BEGIN-->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="星云盘" />
+    <meta property="og:title" content="星云盘 · 文件分享与网盘" />
+    <meta property="og:description" content="基于 Telegram 的文件分发与网盘系统" />
+    <meta property="og:image" content="/og-cover.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!--SHARE_META:END-->
+
     <!--
       Content-Security-Policy（XSS 纵深防护）：
       - default-src 'self'，脚本仅允许同源及 Turnstile / Cloudflare Insights

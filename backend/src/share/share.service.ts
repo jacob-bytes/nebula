@@ -729,6 +729,67 @@ export class ShareService {
     };
   }
 
+  /**
+   * 分享页 Open Graph 摘要（**无副作用**）。
+   *
+   * 与 `getSharePublicInfo` 的区别：
+   * - 不写审计日志：爬虫与页面 HTML 请求不该刷审计表；
+   * - 不消费访问次数、不校验 access JWT；
+   * - 密码保护/已失效时只给通用文案 + noindex，不泄露文件名。
+   *
+   * 返回 null 表示 token 不存在（调用方退回通用 HTML）。
+   */
+  async getShareOgSummary(token: string): Promise<{ title: string; description: string; noindex: boolean } | null> {
+    const link = await this.shareLinkRepo.findOne({ where: { token, isDeleted: false } });
+    if (!link) return null;
+
+    // 密码保护：不暴露任何目标信息
+    if (link.password) {
+      return {
+        title: '受密码保护的分享',
+        description: '输入密码后查看分享内容',
+        noindex: true,
+      };
+    }
+
+    // 取消/禁用：连标题都不给，调用方退回通用 HTML
+    if (link.isDeleted || link.status === ShareLinkStatus.DISABLED) {
+      return null;
+    }
+
+    // 过期 / 次数耗尽：标题可展示但要求搜索引擎忽略（不复用 assertShareUsable，
+    // 后者会抛异常并顺带改库，OG 探测不该有副作用）
+    // computeShareExpiry 返回 ISO 字符串，比较前先转时间戳
+    const expiry = computeShareExpiry(link);
+    const expired = expiry != null && new Date(expiry).getTime() <= Date.now();
+    const exhausted = link.maxAccessCount > 0 && link.currentAccessCount >= link.maxAccessCount;
+    if (expired || exhausted) {
+      return {
+        title: '分享已失效',
+        description: expired ? '该分享已过期' : '该分享的访问次数已用完',
+        noindex: true,
+      };
+    }
+
+    if (link.targetType === ShareTargetType.FILE) {
+      const file = await this.fileRepo.findOne({ where: { id: link.targetId, isDeleted: false } });
+      if (!file) return null;
+      const size = formatBytes(Number(file.size));
+      const kind = describeMime(file.mimeType);
+      return {
+        title: file.originalName,
+        description: `${size} · ${kind} · 通过分享链接下载`,
+        noindex: false,
+      };
+    }
+
+    return {
+      title: '文件夹分享',
+      description: '浏览该分享下的文件与子文件夹',
+      noindex: false,
+    };
+  }
+
   /** 转发：列出文件夹分享内容（实现位于 ShareFolderBrowseService） */
   async listFolderContentsForShare(
     link: ShareLink,
@@ -747,4 +808,32 @@ export class ShareService {
   async getFolderBreadcrumbForShare(link: ShareLink, folderId: string) {
     return this.folderBrowse.getFolderBreadcrumbForShare(link, folderId);
   }
+}
+
+/** 人类可读体积：只用于 OG 描述，精度取 1 位小数即可 */
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit += 1;
+  }
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${units[unit]}`;
+}
+
+/** MIME → 中文类型标签（OG 描述用，不追求完整覆盖） */
+function describeMime(mimeType: string | null | undefined): string {
+  const mime = (mimeType || '').toLowerCase();
+  if (mime.startsWith('image/')) return '图片';
+  if (mime.startsWith('video/')) return '视频';
+  if (mime.startsWith('audio/')) return '音频';
+  if (mime === 'application/pdf') return 'PDF';
+  if (mime.includes('zip') || mime.includes('compressed') || mime.includes('tar')) return '压缩包';
+  if (mime.startsWith('text/')) return '文本';
+  if (mime.includes('word') || mime.includes('document')) return '文档';
+  if (mime.includes('sheet') || mime.includes('excel')) return '表格';
+  if (mime.includes('presentation') || mime.includes('powerpoint')) return '演示文稿';
+  return '文件';
 }
