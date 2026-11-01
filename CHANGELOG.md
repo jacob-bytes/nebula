@@ -6,6 +6,26 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.4] - 2026-11-01
+
+修复 tag 流水线的两处失败，使发行包能自动产出。
+
+### 修复
+
+- **质量门禁的「发行包」作业在 tag 上必然失败**：该作业用临时密钥 + `RELEASE_VERIFY_PUBLIC_KEY`
+  覆盖验签链路（CI 没有发布私钥），而该覆盖在 `GITHUB_REF_TYPE=tag` 时被 `common.sh` 的
+  信任根保护硬拒绝（`EXIT_PRECHECK=3`）。现在该作业只在非 tag 上运行；tag 的真实构建与签名
+  由 `release.yml` 用仓库 secret 完成。
+- **`verify-key-override.test.sh` 在 tag 上下文误判**：与 `check-version.test.sh` 同类问题——
+  运行器上的 `GITHUB_REF_TYPE=tag` 让「非 tag」用例走进拒绝分支。用例改为先清环境变量、
+  再应用自身变量（正反两个用例在两种环境下均通过）。
+
+### 验证
+
+- 六组发布脚本用例在「普通」与「模拟 tag」两种环境下逐个跑：除 `rollback-safe-flag`
+  （依赖 GNU `realpath -e`，仅 Linux 可用）外全部通过。
+- 本轮不带产物的历史版本（v0.16–v0.29.3）不再回补，按约定只看 v0.29.4 起的产物。
+
 ## [0.29.3] - 2026-11-01
 
 修复 tag 触发流水线中版本守卫用例的误判。

@@ -271,6 +271,10 @@ jobs:
 
   release-package:
     name: Release package / Linux x64 ZIP
+    # tag 流水线上本 job 跳过：它用「临时密钥 + RELEASE_VERIFY_PUBLIC_KEY」覆盖验证链路，
+    # 而该覆盖在 GITHUB_REF_TYPE=tag 时被硬拒绝（common.sh 的信任根保护）→ 必然 exit 3。
+    # tag 的真实构建与签名由 release.yml 用仓库 secret 完成。
+    if: ${{ github.ref_type != 'tag' }}
     runs-on: ubuntu-24.04
     timeout-minutes: 75
     steps:

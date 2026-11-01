@@ -29,13 +29,24 @@ check() {
 # 在子 shell 内应用若干 VAR=value 前缀后调用函数，输出 "退出码|stdout"。
 # 不得使用 `env VAR=1 <shell 函数>`——env 是外部程序，无法执行 shell 函数（返回 127）。
 run_fn() {
+  # 前缀 VAR=value 作为环境注入，其余为要调用的函数
+  local -a env_pairs=()
+  while [[ "${1:-}" == *=* ]]; do env_pairs+=("$1"); shift; done
   local code=0 out=''
   set +e
-  out=$( while [[ "${1:-}" == *=* ]]; do export "${1?}"; shift; done; "$@" 2>/dev/null )
+  out=$(
+    unset GITHUB_REF_TYPE GITHUB_REF_NAME GITHUB_EVENT_NAME
+    for kv in "${env_pairs[@]:-}"; do
+      [[ -n "$kv" ]] || continue
+      export "${kv?}"
+    done
+    "$@" 2>/dev/null
+  )
   code=$?
   set -e
   printf '%s|%s' "$code" "$out"
 }
+
 
 DEFAULT_KEY="$RELEASE_ROOT/scripts/release/update-public-key.pem"
 printf 'dummy-public-key\n' > "$TMP/other.pem"
