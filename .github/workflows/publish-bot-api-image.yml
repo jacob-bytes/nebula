@@ -1,0 +1,75 @@
+name: Publish bot-api image
+
+# 发布本地 Telegram Bot API 镜像（仓库内 C++ fork）。仅手动触发：
+# 编译 TDLib 需要 15–30 分钟且峰值内存约 2GB，不应跟着每次 push 跑。
+#
+#   docker pull ghcr.io/<owner>/<repo>-bot-api:<tag>
+#
+# 然后在 docker-compose.yml 里把 bot-api 服务的 `build:` 换成 `image:` 即可，
+# 或直接：
+#   docker run -v botapi-workdir:/var/lib/telegram-bot-api \
+#     ghcr.io/<owner>/<repo>-bot-api:latest \
+#     --api-id=... --api-hash=... --local --http-port=8081 --enable-file-streaming
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-bot-api-image
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}-bot-api
+
+jobs:
+  build:
+    name: Build and push bot-api image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=latest
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=Nebula local Telegram Bot API
+            org.opencontainers.image.description=tdlib telegram-bot-api fork with streaming file endpoint
+            org.opencontainers.image.licenses=BSL-1.0
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/bot-api.Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max

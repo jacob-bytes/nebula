@@ -165,9 +165,12 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          scripts=(scripts/build-linux-x64-release.sh scripts/release/*.sh)
+          scripts=(scripts/build-linux-x64-release.sh scripts/release/*.sh scripts/ops/*.sh)
           bash -n "${scripts[@]}"
           shellcheck --severity=warning "${scripts[@]}"
+          # $VAR 紧跟中文/全角字符时 bash 会把它并入变量名，set -u 下直接失败；
+          # 已实际踩过两次（发布脚本、备份脚本），这里做成硬门禁。
+          python3 scripts/ci/check-shell-var-braces.py
           old_script_path='.codebuddy/'scripts
           ! grep -RIn --exclude-dir=.git --exclude-dir=.codebuddy --exclude='*.md' -- "$old_script_path" scripts .github README.md
 

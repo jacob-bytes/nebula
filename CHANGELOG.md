@@ -6,6 +6,39 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.16.0] - 2026-11-01
+
+交付与运维：本地 Bot API 进 Compose、多架构镜像、备份恢复、升级路径回归。
+
+### 新增
+
+- **compose 可选服务 `bot-api`（profile: botapi）** + `docker/bot-api.Dockerfile`：
+  编译仓库内的 TDLib fork，以 `--local --enable-file-streaming` 运行，突破官方
+  20MB 下载上限。与 app 共享 `botapi-workdir`（app 侧只读），workdir 持久化。
+  不对外暴露端口，仅 compose 内网可达。
+- **GHCR 多架构镜像**：`.github/workflows/publish-image.yml`（amd64+arm64，
+  semver/edge/sha 标签，registry 构建缓存）；`.github/workflows/publish-bot-api-image.yml`
+  手动发布 Bot API 镜像（编译耗时长，不跟随 push）。
+- **`scripts/ops/backup.sh` / `restore.sh`**：支持直连与 `--compose` 两种形态；
+  SQLite 用 `VACUUM INTO` + `PRAGMA integrity_check`，PostgreSQL 用 custom format
+  `pg_dump`；快照含 `MANIFEST.txt`（版本/大小/sha256）与保留策略。
+  恢复端校验 sha256、非空库需 `--force`、SQLite 原子替换。
+- **升级路径回归** `backend/src/database/upgrade-migration.spec.ts`：跑完整迁移链 →
+  插入数据 → `undoLastMigration()` 回到旧 schema → 再次迁移，断言数据完好、
+  迁移记录一致、重复执行为空操作。
+- **`scripts/ci/check-shell-var-braces.py`** 接入 CI 门禁：禁止 `$VAR` 紧跟非 ASCII
+  字符（bash 会把它并入变量名，`set -u` 下直接失败）。
+
+### 修复
+
+- `backup.sh` 的保留策略改用 `while read` 而非 `mapfile`（macOS 自带 bash 3.2 无此命令）。
+- 新增脚本中同类 `$VAR` 后接全角字符的问题 4 处一并修正。
+
+### 验证
+
+- SQLite 备份→删库→恢复：数据完整（用户行回来了）；覆盖保护与篡改检测按预期拒绝。
+- 后端 `tsc --noEmit` 通过；jest 1593 passed / 0 failed（含新增升级用例）。
+
 ## [0.15.6] - 2026-11-01
 
 修复发布流水线与 release-notes 工作流的同名冲突。

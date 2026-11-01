@@ -1,0 +1,85 @@
+name: Publish image
+
+# 把应用镜像推到 GHCR，多架构（amd64 + arm64）。
+#
+# 为什么单独一条工作流：发布 ZIP 需要 30–75 分钟（要编译 C++ Bot API），
+# 而应用镜像只需要 Node 构建，几分钟即可；两者不该互相阻塞。
+#
+# 打出来的镜像用法：
+#   docker run -p 3000:3000 --env-file .env ghcr.io/<owner>/<repo>:latest
+# 或者把 docker-compose.yml 里的 `build:` 换成 `image:`。
+on:
+  push:
+    branches: [main]
+    tags: ['v*.*.*']
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-image-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+  # github.repository 已是 owner/repo 的小写形式，可直接用
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build:
+    name: Build and push multi-arch image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up QEMU (arm64 emulation)
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Derive image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=edge,branch=main
+            type=sha,format=short
+          labels: |
+            org.opencontainers.image.title=星云盘 (nebula)
+            org.opencontainers.image.description=Telegram-backed file distribution and netdisk
+            org.opencontainers.image.licenses=GPL-3.0-only
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 分层缓存：把构建缓存推到 GHCR，后续构建只需增量
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
+          # 原生模块（sharp/sqlite3）在 QEMU 下显著变慢，给足超时
+          provenance: false

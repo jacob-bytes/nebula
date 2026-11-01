@@ -55,6 +55,57 @@ git pull && docker compose up -d --build
 
 应用内「系统更新」已在本仓库移除，升级只走上述流程。
 
+## 大文件支持：本地 Bot API（可选）
+
+官方 `api.telegram.org` 对下载有 20MB 上限。要支持更大的文件，启用仓库自带的
+Bot API 服务（二次开发的 TDLib fork，含流式文件端点）：
+
+```bash
+# 1. .env 里补三项（API_ID/HASH 来自 my.telegram.org，不是 Bot Token）
+#    TELEGRAM_API_ID=123456
+#    TELEGRAM_API_HASH=abcdef...
+#    TELEGRAM_API_BASE=http://bot-api:8081
+#    TELEGRAM_LOCAL_FILE_DIR=/var/lib/telegram-bot-api
+
+# 2. 连带 bot-api 一起启动
+docker compose --profile botapi up -d --build
+```
+
+要点：
+
+- 首次构建会**编译 TDLib**（约 15–30 分钟，峰值内存约 2GB）；也可以直接拉预构建镜像，
+  把 compose 里 `bot-api` 服务的 `build:` 换成
+  `image: ghcr.io/jacob-bytes/nebula-bot-api:latest`。
+- `botapi-workdir` 卷必须持久化：本地 Bot API 返回的 `file_path` 是容器内绝对路径，
+  且历史 `file_id` 与 workdir 强绑定，删卷等于让已上传文件全部失效。
+- 该服务**不对外暴露端口**，只有 `app` 通过 compose 内网访问。
+- 两个容器以相同路径挂载同一卷（app 侧只读），后端才能按 `file_path` 直接读文件。
+
+## 使用预构建镜像
+
+```bash
+docker pull ghcr.io/jacob-bytes/nebula:latest     # amd64 + arm64
+```
+
+把 `docker-compose.yml` 中 `app` 服务的 `build:` 段替换为
+`image: ghcr.io/jacob-bytes/nebula:latest` 即可，其余不变。
+
+## 备份与恢复
+
+```bash
+# 备份（默认走 .env 直连；容器部署用 --compose 在 postgres 容器内导出）
+scripts/ops/backup.sh --compose --keep 7
+
+# 恢复到新机器 / 回滚
+scripts/ops/restore.sh backups/20261101-153300 --compose --force
+```
+
+快照目录含 `MANIFEST.txt`（版本、类型、大小、sha256）。恢复前会校验 sha256，
+不匹配直接拒绝；目标库非空时必须显式 `--force`。SQLite 模式采用原子替换，
+PostgreSQL 使用 `pg_restore --clean --if-exists`。
+
+**不包含**：`.env`（含密钥）、Bot API workdir（需整体搬迁）、下载缓存（可重建）。
+
 ## 与裸机部署的差异
 
 | 能力 | 裸机 systemd | Docker Compose |
