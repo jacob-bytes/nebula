@@ -5,6 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { File } from '../common/entities/file.entity';
 import { Tag } from '../common/entities/tag.entity';
+import { classifyVideo } from './video-classify';
 import {
   AUTO_TAG_PREFIX,
   autoTagColor,
@@ -149,8 +150,20 @@ export class VideoMetaService {
       // 1) 落库：便于「重新扫描」判断与后续在列表里展示时长/分辨率
       await this.fileRepo.update({ id: file.id }, { videoMeta: meta });
 
-      // 2) 打自动标签（幂等）
+      // 2) 打自动标签（幂等）：L1 技术标签 + L2 内容归类
       const names = deriveVideoTags(meta).slice(0, MAX_AUTO_TAGS);
+      const classification = classifyVideo({
+        filename: file.originalName ?? '',
+        durationSeconds: meta.durationSeconds,
+        width: meta.width,
+        height: meta.height,
+        hasAudio: meta.hasAudio,
+        bitrateKbps: meta.bitrateKbps,
+      });
+      if (classification) {
+        names.push(`${AUTO_TAG_PREFIX}${classification.category}`);
+        this.logger.debug(`内容归类 id=${file.id} → ${classification.category}（${classification.reason}）`);
+      }
       const tagIds = await this.ensureTags(file.uploaderId, names);
       if (tagIds.length === 0) return meta;
 

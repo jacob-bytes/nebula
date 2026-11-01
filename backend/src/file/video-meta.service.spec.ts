@@ -47,7 +47,8 @@ describe('VideoMetaService（真实 SQLite）', () => {
   let ds: DataSource;
   let service: VideoMetaService;
 
-  const fileOf = (id: string, mimeType = 'video/mp4') => ({ id, mimeType, uploaderId: userId } as never);
+  const fileOf = (id: string, mimeType = 'video/mp4', originalName = 'a.mp4') =>
+    ({ id, mimeType, uploaderId: userId, originalName } as never);
 
   beforeAll(async () => {
     ds = new DataSource({ type: 'sqlite', database: DB_PATH, entities: [TestFile, TestTag, TestFileTag], synchronize: true });
@@ -115,5 +116,24 @@ describe('VideoMetaService（真实 SQLite）', () => {
     (service as unknown as { probe: () => Promise<unknown> }).probe = async () => null;
     await ds.getRepository(TestFile).save({ id: 'file-4', mimeType: 'video/mp4', uploaderId: userId });
     await expect(service.analyze(fileOf('file-4'), { sourcePath: '/tmp/y.mp4' })).resolves.toBeNull();
+  });
+
+  it('L2 归类：集数命名的视频额外得到「自动·剧集」标签', async () => {
+    await ds.getRepository(TestFile).save({ id: 'file-5', mimeType: 'video/mp4', uploaderId: userId });
+    await service.analyze(fileOf('file-5', 'video/mp4', 'Show.S01E02.1080p.mkv'), { sourcePath: '/tmp/z.mp4' });
+
+    const tags = await ds.getRepository(TestTag).find();
+    expect(tags.map((tag) => tag.name).sort()).toEqual([
+      '自动·1080p', '自动·H.264', '自动·中等视频', '自动·剧集',
+    ]);
+  });
+
+  it('L2 没有可靠线索时不加分类标签（避免误标）', async () => {
+    await ds.getRepository(TestFile).save({ id: 'file-6', mimeType: 'video/mp4', uploaderId: userId });
+    await service.analyze(fileOf('file-6', 'video/mp4', 'VID_20240101.mp4'), { sourcePath: '/tmp/w.mp4' });
+
+    const tags = await ds.getRepository(TestTag).find();
+    expect(tags.map((tag) => tag.name)).not.toContain('自动·剧集');
+    expect(tags).toHaveLength(3);
   });
 });
