@@ -6,6 +6,21 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.3] - 2026-11-01
+
+修复 tag 触发流水线中版本守卫用例的误判。
+
+### 修复
+
+- **`check-version.test.sh` 在 tag 上下文下失败**：`check-version.sh` 在
+  `GITHUB_REF_TYPE=tag` 时优先读 `GITHUB_REF_NAME`，而用例只设了合成的 `CI_TAG`，
+  runner 上真实的 tag 变量盖掉了它，导致「一致 → 放行」被误判为拒绝。
+  用例现在先清掉环境里的 tag 上下文变量、再应用自身变量（顺序反了会把用例变量也清掉）。
+  用 `GITHUB_REF_TYPE=tag GITHUB_REF_NAME=vX` 模拟流水线环境，修复前 8/10、修复后 10/10，
+  普通环境同样 10/10。
+- 该问题只在 tag 触发时出现：同一提交在 main 推送时门禁是绿的，tag 推送则红——
+  这也是为什么一开始误以为与 runner 环境隔离有关。
+
 ## [0.29.2] - 2026-11-01
 
 发布流水线诊断增强（tag 上下文下回归测试仍失败）。

@@ -57,8 +57,19 @@ write_fixture() { # version
 # 只比对退出码：0=放行，非 0=拒绝（node 缺失时放行用例会失败，不会静默通过）。
 run_guard() {
   local code=0
+  local -a case_env=("$@")
   set +e
-  ( while [[ "${1:-}" == *=* ]]; do export "${1?}"; shift; done; bash "$FIXTURE/scripts/release/check-version.sh" ) >/dev/null 2>&1
+  # 顺序很重要：先清掉 runner 上真实的 tag 上下文变量（tag 触发的流水线里
+  # GITHUB_REF_TYPE=tag 会让 check-version.sh 优先读 GITHUB_REF_NAME，盖掉用例合成值），
+  # 再应用用例自己的 VAR=value。反过来会把用例要设的值一起清掉。
+  (
+    unset CI_TAG GITHUB_REF_TYPE GITHUB_REF_NAME GITHUB_EVENT_NAME
+    for kv in "${case_env[@]:-}"; do
+      [[ -n "$kv" ]] || continue
+      export "${kv?}"
+    done
+    bash "$FIXTURE/scripts/release/check-version.sh"
+  ) >/dev/null 2>&1
   code=$?
   set -e
   printf '%s' "$code"
