@@ -102,3 +102,24 @@ export function injectShareMeta(html: string, meta: ShareOgMeta): string {
   }
   return `${result.slice(0, headEnd)}    ${tags}\n  ${result.slice(headEnd)}`;
 }
+
+/** 分享封面类型：与 frontend/public/og/<kind>.png 一一对应 */
+export type OgCoverKind = 'image' | 'video' | 'audio' | 'archive' | 'doc' | 'default';
+
+/**
+ * MIME → 封面类型。
+ *
+ * 为什么按类型而不是用真实缩略图：爬虫抓取时缩略图链路可能因回源/票据而 404，
+ * 导致分享卡片变成空白——那比没有封面更糟。类型封面是确定性的。
+ */
+export function ogCoverKindForMime(mimeType: string | null | undefined): OgCoverKind {
+  const mime = (mimeType || '').toLowerCase();
+  if (mime.startsWith('image/')) return 'image';
+  if (mime.startsWith('video/')) return 'video';
+  if (mime.startsWith('audio/')) return 'audio';
+  if (mime.includes('zip') || mime.includes('compressed') || mime.includes('tar') || mime.includes('7z')) return 'archive';
+  if (mime === 'application/pdf' || mime.startsWith('text/') || mime.includes('word')
+    || mime.includes('document') || mime.includes('sheet') || mime.includes('excel')
+    || mime.includes('presentation') || mime.includes('powerpoint')) return 'doc';
+  return 'default';
+}

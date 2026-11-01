@@ -6,6 +6,30 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.20.0] - 2026-11-01
+
+分享卡封面按文件类型区分。
+
+### 变更
+
+- **OG 封面按类型生成**：图片 / 视频 / 音频 / 压缩包 / 文档 / 默认共 6 张 1200×630 封面
+  （`frontend/public/og/`），分享页按 `mimeType` 选择，替代原来所有分享共用一张品牌图。
+- 生成脚本 `scripts/assets/gen-og-covers.py`（PIL，可重跑；含中文字体回退链）。
+- `share-og.ts` 新增 `ogCoverKindForMime()` 纯函数 + 12 条映射用例
+  （含空/未知 MIME 回退 default）。
+- 密码保护、已失效、token 不存在的分享统一用 `default` 封面。
+
+### 说明
+
+- 没有采用「真实文件缩略图作为 og:image」：缩略图链路依赖回源与 media ticket，
+  爬虫抓取时可能 404，反而让分享卡片变空白；类型封面是确定性的，且能体现内容类别。
+
+### 验证
+
+- 三种分享实测：`video/mp4 → /og/video.png`、`application/pdf → /og/doc.png`、
+  `application/zip → /og/archive.png`；密码保护 → `/og/default.png`。
+- 6 张封面 HTTP 200（27KB 左右）；E2E 5 条用例通过；前端 392、后端 1627 通过。
+
 ## [0.19.0] - 2026-11-01
 
 修复并发冷下载的真实竞态；配额批量设置与用量预警。

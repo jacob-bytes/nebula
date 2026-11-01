@@ -231,8 +231,8 @@ async function bootstrap() {
             description: summary.description,
             url: `${publicAppUrl}/s/${token}`,
             siteName: '星云盘',
-            // 统一用品牌封面：文件缩略图需要 ticket 且可能被裁剪，不适合做分享预览
-            image: `${publicAppUrl}/og-cover.png`,
+            // 按文件类型选封面：缩略图链路对爬虫可能 404，类型封面是确定性的
+            image: `${publicAppUrl}/og/${summary.coverKind}.png`,
             noindex: summary.noindex,
           })
         : spaIndexHtml;

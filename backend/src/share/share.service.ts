@@ -19,6 +19,7 @@ import { FileService } from '../file/file.service';
 import { SharePasswordService } from './share-password.service';
 import { SharePreviewSessionService } from './share-preview-session.service';
 import { ShareFolderBrowseService, computeShareExpiry } from './share-folder-browse.service';
+import { ogCoverKindForMime, type OgCoverKind } from './share-og';
 import { CreateShareDto, UpdateShareDto } from './share.dto';
 import { BCRYPT_ROUNDS } from '../common/constants/bcrypt';
 import { databaseCurrentTimestamp } from '../database/database-types';
@@ -739,7 +740,12 @@ export class ShareService {
    *
    * 返回 null 表示 token 不存在（调用方退回通用 HTML）。
    */
-  async getShareOgSummary(token: string): Promise<{ title: string; description: string; noindex: boolean } | null> {
+  async getShareOgSummary(token: string): Promise<{
+    title: string;
+    description: string;
+    noindex: boolean;
+    coverKind: OgCoverKind;
+  } | null> {
     const link = await this.shareLinkRepo.findOne({ where: { token, isDeleted: false } });
     if (!link) return null;
 
@@ -749,6 +755,7 @@ export class ShareService {
         title: '受密码保护的分享',
         description: '输入密码后查看分享内容',
         noindex: true,
+        coverKind: 'default',
       };
     }
 
@@ -768,6 +775,7 @@ export class ShareService {
         title: '分享已失效',
         description: expired ? '该分享已过期' : '该分享的访问次数已用完',
         noindex: true,
+        coverKind: 'default',
       };
     }
 
@@ -780,6 +788,7 @@ export class ShareService {
         title: file.originalName,
         description: `${size} · ${kind} · 通过分享链接下载`,
         noindex: false,
+        coverKind: ogCoverKindForMime(file.mimeType),
       };
     }
 
@@ -787,6 +796,7 @@ export class ShareService {
       title: '文件夹分享',
       description: '浏览该分享下的文件与子文件夹',
       noindex: false,
+      coverKind: 'default',
     };
   }
 

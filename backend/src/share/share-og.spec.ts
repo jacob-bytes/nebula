@@ -3,6 +3,7 @@ import {
   SHARE_META_END,
   escapeHtmlAttribute,
   injectShareMeta,
+  ogCoverKindForMime,
   type ShareOgMeta,
 } from './share-og';
 
@@ -87,5 +88,28 @@ describe('分享页 OG 注入', () => {
 
   it('转义函数覆盖五个关键字符', () => {
     expect(escapeHtmlAttribute(`&<>"'`)).toBe('&amp;&lt;&gt;&quot;&#39;');
+  });
+});
+
+describe('封面类型映射', () => {
+  it.each([
+    ['image/png', 'image'],
+    ['image/jpeg', 'image'],
+    ['video/mp4', 'video'],
+    ['audio/mpeg', 'audio'],
+    ['application/zip', 'archive'],
+    ['application/x-7z-compressed', 'archive'],
+    ['application/pdf', 'doc'],
+    ['application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'doc'],
+    ['text/plain', 'doc'],
+    ['application/octet-stream', 'default'],
+    ['', 'default'],
+  ])('%s → %s', (mime, expected) => {
+    expect(ogCoverKindForMime(mime)).toBe(expected);
+  });
+
+  it('未知/空 MIME 退回 default（不会因为没有封面而不显示卡片）', () => {
+    expect(ogCoverKindForMime(null)).toBe('default');
+    expect(ogCoverKindForMime(undefined)).toBe('default');
   });
 });
