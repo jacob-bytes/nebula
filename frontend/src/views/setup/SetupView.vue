@@ -166,7 +166,15 @@ async function testTelegram(): Promise<void> {
       text: `连接成功${data.botUsername ? `：@${data.botUsername}` : ''}${data.messageSent ? '，测试消息已发送' : ''}`,
     };
   } catch (err: unknown) {
-    testResult.value = { ok: false, text: getErrorMessage(err) || '连接失败' };
+    // 优先展示服务端原文：向导里的失败原因（网络/代理/凭据）是可直接操作的，
+    // 不能被前端对 5xx 的通用归类覆盖掉。
+    const serverMessage = (err as { response?: { data?: { message?: unknown } } })?.response?.data?.message;
+    testResult.value = {
+      ok: false,
+      text: typeof serverMessage === 'string' && serverMessage
+        ? serverMessage
+        : (getErrorMessage(err) || '连接失败'),
+    };
   } finally {
     testing.value = false;
   }

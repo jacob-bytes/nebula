@@ -2,7 +2,6 @@ import { createHash, randomBytes, timingSafeEqual } from 'crypto';
 import { existsSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import {
-  BadGatewayException,
   BadRequestException,
   ConflictException,
   ForbiddenException,
@@ -131,8 +130,10 @@ export class SetupService {
         });
       } catch (error) {
         // 网络不通 / 超时 / DNS 失败都归为「连不上」，给出可操作提示而不是 500
-        throw new BadGatewayException(
-          `无法连接 Telegram（${base}）：${(error as Error).message}。若服务器需要代理/自建 Bot API，请先在 .env 配置 TELEGRAM_API_BASE`,
+        // 用 400 而不是 502：前端会把 5xx 归类成通用「文件服务暂时不可用」，
+        // 把这段可操作的提示盖掉；而这里的失败原因（网络/代理/DNS）正是用户要看的。
+        throw new BadRequestException(
+          `无法连接 Telegram（${base}）：${(error as Error).message}。若服务器需要代理或自建 Bot API，请先在 .env 配置 TELEGRAM_API_BASE`,
         );
       }
       const body = await response.json().catch(() => ({ ok: false, description: '响应不是 JSON' })) as {
