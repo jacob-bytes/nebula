@@ -125,6 +125,8 @@ jobs:
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "Release ${tag} 已存在（可能由 release-notes 工作流创建），补传资产并更新说明。"
             gh release upload "$tag" "${assets[@]}" --clobber
+            # 资产就位后才公开（release-notes 创建的是 draft，见该工作流注释）
+            gh release edit "$tag" --draft=false
             gh release edit "$tag" \
               --title "NEBULA v${version}" \
               --notes-file "$release_dir/RELEASE.txt"

@@ -3,9 +3,10 @@ name: Release notes
 # 目的：让每个版本 tag 都有对应的 GitHub Release（版本说明来自 CHANGELOG.md）。
 #
 # 与 .github/workflows/release.yml 的分工：
-#   - 本工作流：**只发布版本说明**，不需要任何 secret，tag 推送即自动生成；
-#     已存在同名 Release 时跳过，因此晚些时候由 release.yml 产出的「带签名制品」的
-#     正式 Release 不会被这里覆盖。
+#   - 本工作流：**只写版本说明**，不需要任何 secret，tag 推送即自动生成；
+#     但创建为 **draft**——此时还没有发行包，公开成 latest 会让用户以为发了个空版本。
+#     release.yml 上传完资产后会 `gh release edit --draft=false` 把它公开。
+#     若构建失败，该版本会保持 draft（只有维护者可见），符合 fail-closed。
 #   - release.yml：构建 Linux x64 发行包 + 签名 + 上传资产，需要 RELEASE_SIGNING_KEY
 #     与 scripts/release/update-public-key.pem 配对，当前手动触发。
 #
@@ -57,9 +58,6 @@ jobs:
             ' CHANGELOG.md
           }
 
-          # 当前最高版本（用于 --latest）
-          highest=$(git tag --list 'v*.*.*' | sort -V | tail -1)
-
           create_one() {
             local tag=$1 version=${1#v} notes
             if gh release view "$tag" >/dev/null 2>&1; then
@@ -71,14 +69,13 @@ jobs:
               printf '跳过 %s：CHANGELOG.md 中没有该版本小节\n' "$tag" >&2
               return 0
             fi
-            local latest_flag=()
-            [[ "$tag" == "$highest" ]] && latest_flag=(--latest)
             printf '创建 %s\n' "$tag"
+            # --draft：先不公开，等 release.yml 上传完资产再转正
             gh release create "$tag" \
               --title "星云盘 ${tag}" \
               --notes "$notes" \
               --verify-tag \
-              "${latest_flag[@]}"
+              --draft
           }
 
           if [[ "${GITHUB_EVENT_NAME}" == 'push' ]]; then
