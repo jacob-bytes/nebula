@@ -54,7 +54,10 @@ case "$DB_TYPE" in
     pg_restore --list "$DEST/database.pg.dump" >/dev/null
     ;;
   sqlite)
-    require_cmd sqlite3; require_cmd systemctl
+    # sqlite3 CLI 不是发行包的依赖：最小化系统上往往没有它。
+    # 服务此时已停（下面会停），因此缺少 CLI 时可以安全退化为文件拷贝；
+    # 有 CLI 时仍用 `.backup`（一致性更好）并做 integrity_check。
+    require_cmd systemctl
     DB_DATABASE=$(env_value DB_DATABASE); [[ -n "$DB_DATABASE" ]] || die "$EXIT_PRECHECK" 'SQLite DB_DATABASE 未配置。'
     # P1-05：.env 与运行库都位于 $RUNTIME_DIR/backend（服务 WorkingDirectory 同为该目录），
     # 相对路径必须以 .env 所在目录解析；此前按发行目录解析必然找不到真实库。
@@ -65,8 +68,17 @@ case "$DB_TYPE" in
     # NEBULA_BACKUP_KEEP_STOPPED=1（升级流程调用）：备份后保持停机进入停写窗口，
     # 由 upgrade.sh 在迁移+切链完成后统一恢复服务；独立备份仍默认恢复运行。
     trap 'if [[ ${stopped:-0} == 1 && ${NEBULA_BACKUP_KEEP_STOPPED:-0} != 1 ]]; then systemctl start "$SERVICE" >/dev/null 2>&1 || true; fi' EXIT
-    sqlite3 "$DB_DATABASE" ".backup '$DEST/database.sqlite'"
-    [[ "$(sqlite3 "$DEST/database.sqlite" 'PRAGMA integrity_check;')" == ok ]] || die "$EXIT_VERIFY" 'SQLite 备份完整性检查失败。'
+    if command -v sqlite3 >/dev/null 2>&1; then
+      sqlite3 "$DB_DATABASE" ".backup '$DEST/database.sqlite'"
+      [[ "$(sqlite3 "$DEST/database.sqlite" 'PRAGMA integrity_check;')" == ok ]] || die "$EXIT_VERIFY" 'SQLite 备份完整性检查失败。'
+    else
+      # 降级路径：服务已停止，直接拷贝文件；用大小比对做最低限度校验，
+      # 并在日志里说清「未执行 integrity_check」，避免让人误以为体检过。
+      warn '未找到 sqlite3 命令：退化为停服后文件拷贝（未执行 integrity_check）。建议安装 sqlite3 以获得一致性备份。'
+      cp --preserve=all -- "$DB_DATABASE" "$DEST/database.sqlite"
+      [[ "$(wc -c < "$DB_DATABASE")" == "$(wc -c < "$DEST/database.sqlite")" ]] \
+        || die "$EXIT_VERIFY" 'SQLite 备份大小与原库不一致。'
+    fi
     if [[ ${NEBULA_BACKUP_KEEP_STOPPED:-0} == 1 ]]; then
       log '按升级流程要求保持服务停止（停写窗口）；服务恢复由调用方负责。'
     else

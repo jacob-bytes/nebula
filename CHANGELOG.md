@@ -6,6 +6,27 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.11] - 2026-11-01
+
+修复非交互安装误入管理菜单死循环；备份不再强制依赖 sqlite3 CLI。
+
+### 修复
+
+- **`start.sh --setup/--yes` 在检测到残留 systemd 单元时弹管理菜单**：非交互模式下
+  `read` 读到 EOF 却继续循环，终端刷屏后被 `set -e` 判失败（真实报错：第 886 行退出码 1），
+  一次全新安装因此中断。现在：
+  - 非交互模式**不进入菜单**：若运行目录没有既有 `.env` 与数据，按重装处理并覆盖单元；
+    有既有配置/数据则明确失败并提示用 `upgrade.sh`（不静默覆盖生产数据）；
+  - 菜单的 `read` 遇到 EOF 直接退出，交互使用也不会再无限循环。
+- **`upgrade.sh` 在缺 `sqlite3` CLI 的机器上无法备份**（真实环境报 `缺少必需命令：sqlite3`）：
+  发行包只带 Node，不带 sqlite3 客户端。现在无 CLI 时退化为「停服后文件拷贝」并记录警告
+  （说明未执行 integrity_check），有 CLI 时仍用 `.backup` + 完整性检查。
+
+### 说明
+
+- 干净重装前需清理残留单元：`systemctl disable --now nebula.service` 并删除
+  `/etc/systemd/system/nebula.service`，否则 0.29.10 及更早版本仍会进入菜单。
+
 ## [0.29.10] - 2026-11-01
 
 修复发布门禁被自己的用例卡住（`$fn（` 括号问题）。

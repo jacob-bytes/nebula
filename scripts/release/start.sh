@@ -883,7 +883,11 @@ management_menu() {
   while true; do
     printf '\n=== NEBULA 管理菜单 ===\n'
     printf '  1) 启动服务\n  2) 重启服务\n  3) 停止服务\n  4) 查看状态\n  5) 查看日志\n  6) 修复 systemd 服务单元\n  0) 退出\n'
-    read -r -p '请选择: ' choice
+    # EOF（无 TTY / 管道输入）时直接退出，避免无限循环刷屏
+    if ! read -r -p '请选择: ' choice; then
+      printf '\n[信息] 输入已结束，退出管理菜单。\n'
+      return 0
+    fi
     case "$choice" in
       1) manage_start ;;
       2) manage_restart ;;
@@ -949,9 +953,21 @@ main() {
   esac
 
   if existing_deployment_detected; then
-    info '检测到已有 NEBULA 服务、配置或后端数据，已切换到管理模式。'
-    management_menu
-    exit
+    if [[ "$noninteractive" == 1 || "$setup_mode" == 1 ]]; then
+      # 非交互（install.sh --yes / --setup）不能弹菜单：真实事故里它读到 EOF 后无限循环，
+      # 把一次全新安装变成「第 886 行执行失败」。这里改为明确的处理策略：
+      # 若运行目录里**没有既有配置与数据**，视为重装，继续覆盖安装；
+      # 否则退出并提示改用 upgrade.sh，避免误覆盖生产数据。
+      if [[ ! -s "$APP_ENV" ]] && ! find "$RUNTIME_DIR/backend/data" -mindepth 1 -maxdepth 1 -print -quit 2>/dev/null | grep -q .; then
+        warn '检测到残留的 systemd 单元（无既有配置与数据），按重装处理并覆盖。'
+      else
+        die '检测到已有配置或数据，非交互模式不会覆盖。升级请用 current/scripts/release/upgrade.sh <新包.zip>'
+      fi
+    else
+      info '检测到已有 NEBULA 服务、配置或后端数据，已切换到管理模式。'
+      management_menu
+      exit
+    fi
   fi
 
   ensure_runtime_dirs
