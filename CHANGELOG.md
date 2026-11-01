@@ -6,6 +6,27 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.0] - 2026-11-01
+
+发布后自检 + 恢复 tag 触发的发行流水线。
+
+### 新增
+
+- **`scripts/release/check-release-state.sh`**：核对「工作区干净 / 本地 HEAD 与上游一致 /
+  标签存在且剥离后指向 HEAD / 远程标签一致 / VERSION 与标签一致」五项。
+  起因是一次真实事故：`v0.28.0` 的标签被推到上一个提交上，而本地提交根本没生成，
+  流水线构建的是旧代码——本地看起来一切正常，只有比对远程才能发现。
+  - 支持 `--tag` / `--remote` / `--allow-dirty`；失败时打印修复命令。
+- **回归测试** `scripts/release/tests/release-state.test.sh`：用临时 git 仓库 + bare 远程
+  复现五类场景（正确、标签指旧提交、本地领先远程、VERSION 不匹配、远程缺标签），5/5 通过。
+
+### 变更
+
+- **恢复发行流水线的 tag 触发**：发布步骤此前已改成幂等（release-notes 先建说明版，
+  Release 补传资产），签名密钥也已配对，因此推 tag 即可自动产出带制品的 Release；
+  移除密钥时流水线会在导出密钥处失败（不产出未签名包）。
+- README 发版章节补第 4 步「发布后自检」。
+
 ## [0.28.0] - 2026-11-01
 
 加固收尾：依赖告警处理与备份脚本入口收敛。

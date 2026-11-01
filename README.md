@@ -160,11 +160,14 @@ SQLite 免安装：`DB_TYPE=sqlite DB_DATABASE=./data/nebula.sqlite`。
 ```bash
 # 1. 改版本号  2. 在 CHANGELOG.md 顶部加一节  3. 提交并打 tag
 git tag -a v0.24.0 -m "星云盘 v0.24.0" && git push origin main --tags
+
+# 4. 发布后自检：确认提交/标签/版本/远程四者一致
+scripts/release/check-release-state.sh
 ```
 
-推 tag 后 `Release notes` 工作流用 `GITHUB_TOKEN` 自动创建 GitHub Release（说明取自
-`CHANGELOG.md`）。需要可下载的 Linux x64 发行包时手动跑 `Release` 工作流（勾选 `publish`），
-它构建、签名并上传资产——签名密钥的配置见 [docs/deployment.md](docs/deployment.md) 的
+推 tag 后会触发两条流水线：`Release notes` 用 `GITHUB_TOKEN` 创建 Release（说明取自
+`CHANGELOG.md`），`Release` 构建 Linux x64 发行包、签名并上传资产（幂等：Release 已存在时
+补传资产而不是失败）。签名密钥的配置见 [docs/deployment.md](docs/deployment.md) 的
 「发行签名密钥」。
 
 ---
