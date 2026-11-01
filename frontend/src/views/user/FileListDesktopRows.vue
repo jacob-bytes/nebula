@@ -118,7 +118,11 @@
         @keydown.enter.prevent="emit('preview', file)"
         @keydown.space.prevent="emit('preview', file)"
       >
-        <ThumbnailImg :file-id="file.id" :mime-type="file.mimeType" :size="36" :file-name="file.originalName" :context="thumbnailContext" :version="file.uploadVersion" />
+        <!-- 视频：悬停缩略图浮出小播放器（播原文件前几秒）；其他类型保持原样 -->
+        <VideoHoverPopover v-if="isVideoFile(file)" :file-id="file.id" :mime-type="file.mimeType">
+          <ThumbnailImg :file-id="file.id" :mime-type="file.mimeType" :size="36" :file-name="file.originalName" :context="thumbnailContext" :version="file.uploadVersion" />
+        </VideoHoverPopover>
+        <ThumbnailImg v-else :file-id="file.id" :mime-type="file.mimeType" :size="36" :file-name="file.originalName" :context="thumbnailContext" :version="file.uploadVersion" />
       </span>
       <ThumbnailImg v-else :file-id="file.id" :mime-type="file.mimeType" :size="36" :file-name="file.originalName" :context="thumbnailContext" :version="file.uploadVersion" />
       <div class="os-name-block">
@@ -182,9 +186,17 @@
  */
 import { formatDate, formatSize } from '@/utils/format';
 import ThumbnailImg from '../../components/ThumbnailImg.vue';
+import VideoHoverPopover from '../../components/file/VideoHoverPopover.vue';
 import { canPreviewFile, getFileRowClassName, isFileActionable } from '../../utils/file-row-predicates';
 import type { FileItem } from '../../types/file';
 import type { Folder } from '../../stores/folders';
+
+/** 悬停预览只对「已就绪的视频」启用：回收站/处理中/失败的文件没有可播放流 */
+function isVideoFile(target: FileItem): boolean {
+  return target.mimeType?.startsWith('video/') === true
+    && !target.isDeleted
+    && target.status === 'ready';
+}
 
 withDefaults(defineProps<{
   /** 当前目录下的子文件夹 */

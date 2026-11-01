@@ -61,7 +61,9 @@ ENV NODE_ENV=production \
     LOG_DIR=tmp/logs
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends tini ca-certificates \
+    # ffmpeg 用于视频封面抽帧（后端 thumbnail.service 直接 spawn ffmpeg）；
+    # 缺它时视频封面会静默生成失败、列表退回类型图标，因此镜像里必须带上。
+    && apt-get install -y --no-install-recommends tini ca-certificates ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

@@ -4,6 +4,16 @@
 
 ---
 
+
+## 可选依赖：ffmpeg
+
+视频封面（`<fileId>.video.webp`）由后端直接 `spawn ffmpeg` 抽帧生成：
+
+- **Docker 部署**：镜像已内置 ffmpeg，无需额外操作。
+- **裸机部署**：需要 `apt-get install -y ffmpeg`（或等价包）。缺失时视频封面会静默生成失败，
+  列表退回类型图标——文件本身可正常上传下载，只是没有画面预览。
+- 自定义二进制路径可用 `FFMPEG_PATH=/opt/ffmpeg/bin/ffmpeg` 覆盖。
+
 ## 环境要求
 
 **最低硬件配置**：

@@ -78,5 +78,6 @@ declare module 'vue' {
     UploadProgressIndicator: typeof import('./src/components/UploadProgressIndicator.vue')['default']
     UploadQueueList: typeof import('./src/components/upload/UploadQueueList.vue')['default']
     UploadQueueRow: typeof import('./src/components/upload/UploadQueueRow.vue')['default']
+    VideoHoverPopover: typeof import('./src/components/file/VideoHoverPopover.vue')['default']
   }
 }
