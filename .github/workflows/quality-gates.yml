@@ -208,12 +208,18 @@ jobs:
         shell: bash
         run: |
           set -Eeuo pipefail
-          scripts=(scripts/build-linux-x64-release.sh scripts/release/*.sh scripts/ops/*.sh scripts/e2e/*.sh)
+          scripts=(scripts/build-linux-x64-release.sh scripts/install.sh scripts/release/*.sh scripts/ops/*.sh scripts/e2e/*.sh)
           bash -n "${scripts[@]}"
           shellcheck --severity=warning "${scripts[@]}"
           # $VAR 紧跟中文/全角字符时 bash 会把它并入变量名，set -u 下直接失败；
           # 已实际踩过两次（发布脚本、备份脚本），这里做成硬门禁。
           python3 scripts/ci/check-shell-var-braces.py
+          # 一键安装脚本冒烟：--help / --dry-run 必须成功，未知参数必须失败
+          bash scripts/install.sh --help >/dev/null
+          bash scripts/install.sh --dry-run --version 0.1.0 --root /tmp/nebula-ci >/dev/null
+          if bash scripts/install.sh --definitely-unknown >/dev/null 2>&1; then
+            echo 'install.sh 未拒绝未知参数' >&2; exit 1
+          fi
           old_script_path='.codebuddy/'scripts
           ! grep -RIn --exclude-dir=.git --exclude-dir=.codebuddy --exclude='*.md' -- "$old_script_path" scripts .github README.md
 

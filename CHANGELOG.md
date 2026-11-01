@@ -6,6 +6,36 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.23.0] - 2026-11-01
+
+一键安装脚本（Linux / systemd）与 `start.sh` 非交互模式。
+
+### 新增
+
+- **`scripts/install.sh`**：下载发行包 → **验签**（SHA256SUMS.sig + 对应 tag 的公钥）→
+  校验 sha256 → 解压到 `<root>/releases/<版本>` → 原子切换 `current` → 调用发行包内的
+  `start.sh`。默认 SQLite（免装数据库），不接管反向代理与证书。
+  - `--yes` 支持无人值守；`--dry-run` 只打印计划（不联网、不写盘，可在非 Linux 上跑）；
+  - `--archive` 支持离线包与内网镜像；`--force` 才允许覆盖已有安装（默认拒绝，
+    避免把正在运行的实例顶掉）；`--insecure-skip-verify` 仅限离线调试并打印显著警告；
+  - 失败即中止且不切换 `current`，不会留下半成品安装。
+- **`start.sh --yes`**：非交互首次部署，配置全部来自 `NEBULA_*` 环境变量
+  （必填 `NEBULA_TELEGRAM_BOT_TOKEN` / `NEBULA_TELEGRAM_CHAT_ID`；JWT 与 HMAC 密钥自动生成）。
+  为避免两份 `.env` 写法漂移，把原 `configure()` 里的写入逻辑抽成 `write_app_env()`，
+  交互与非交互共用。
+
+### 测试与门禁
+
+- `scripts/release/tests/install-dryrun.test.sh`：7 条用例（`--help`/`--dry-run` 退出码、
+  未知参数拒绝、计划包含根目录/版本/验签策略、非 Linux 明确拒绝）。
+- CI「Release scripts / static safety gates」纳入 `scripts/install.sh` 的 shellcheck 与
+  `--help` / `--dry-run` / 未知参数冒烟。
+
+### 说明
+
+- `install.sh` 需要 Linux + root + systemd；macOS 上会明确拒绝（本次只验证了守卫与计划输出，
+  真实安装需在 Linux 主机执行）。
+
 ## [0.22.0] - 2026-11-01
 
 视频行悬停预览 + 镜像内置 ffmpeg。

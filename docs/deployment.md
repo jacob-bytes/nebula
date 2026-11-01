@@ -5,6 +5,35 @@
 ---
 
 
+## 一键安装（Linux / systemd）
+
+适合不想用 Docker、也没有现成 Node/PG 环境的机器：一条命令下载发行包、**验签**、
+解压到 `/opt/nebula/releases/<版本>`、切换 `current` 符号链接，然后调用发行包内的
+`start.sh` 完成首次配置与 systemd 单元安装。
+
+```bash
+# 交互式（逐项提问，适合第一次装）
+curl -fsSL https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/install.sh | sudo bash
+
+# 无人值守（配置全部来自 NEBULA_* 环境变量）
+sudo NEBULA_TELEGRAM_BOT_TOKEN=123456:abc \
+     NEBULA_TELEGRAM_CHAT_ID=-1001234567890 \
+     NEBULA_APP_URL=https://pan.example.com \
+     bash install.sh --yes
+```
+
+要点：
+
+- **验签默认强制**：下载 `SHA256SUMS.sig` 并用对应 tag 的公钥校验，失败即中止且不切换
+  `current`。`--insecure-skip-verify` 仅用于离线调试。
+- **默认 SQLite**：不装 PostgreSQL；需要 PG 时传 `NEBULA_DB_TYPE=postgres` 与
+  `NEBULA_DB_PASSWORD`。
+- **不装反向代理、不申请证书**：留给使用者按自己的入口方案处理。
+- 安装前可用 `--dry-run` 查看计划（不联网、不写盘）。
+- 已有安装时拒绝覆盖；升级请用 `current/scripts/release/upgrade.sh <新发行包.zip>`。
+- 可选环境变量：`NEBULA_REDIS_HOST/PORT`、`NEBULA_TELEGRAM_API_ID/HASH`（提供则启用内置
+  Bot API）、`NEBULA_SMTP_*`（提供则启用邮件）。
+
 ## 可选依赖：ffmpeg
 
 视频封面（`<fileId>.video.webp`）由后端直接 `spawn ffmpeg` 抽帧生成：

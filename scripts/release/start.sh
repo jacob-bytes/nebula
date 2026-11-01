@@ -402,75 +402,7 @@ configure_redis_manual() {
   printf -v "$__db" '%s' "$db"
 }
 
-configure() {
-  local app_url cors_origins redis_host redis_port redis_password redis_db
-  local bot_token chat_id secure_cookie jwt_secret code_hmac_secret
-  local db_host db_port db_user db_password db_name db_ssl
-  local smtp_host smtp_port smtp_secure smtp_user smtp_password smtp_from smtp_key smtp_salt
-  local telegram_api_id telegram_api_hash
-
-  printf '\n=== NEBULA 首次配置 ===\n'
-  choose_database
-
-  if [[ "$DB_TYPE" == "postgres" ]]; then
-    prompt_value db_host 'PostgreSQL 主机' '127.0.0.1'
-    prompt_value db_port 'PostgreSQL 端口' '5432'
-    prompt_value db_user 'PostgreSQL 用户名' 'postgres'
-    prompt_secret db_password 'PostgreSQL 密码'
-    prompt_value db_name 'PostgreSQL 数据库名' 'nebula'
-    if yes_no 'PostgreSQL 是否启用 SSL 证书校验？' n; then db_ssl=true; else db_ssl=false; fi
-  else
-    db_name='./data/nebula.sqlite'
-  fi
-
-  configure_redis redis_host redis_port redis_password redis_db
-
-  while true; do
-    prompt_secret bot_token 'Telegram Bot Token'
-    [[ "$bot_token" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] && break
-    warn 'Token 格式应为 <bot_id>:<token>，请重新输入。'
-  done
-  prompt_value chat_id 'Telegram 存储 Chat ID'
-
-  if yes_no '是否启用发布包内置 Telegram Bot API？' y; then
-    ENABLE_BOT_API=true
-    while true; do
-      prompt_value telegram_api_id 'Telegram API ID（纯数字）'
-      [[ "$telegram_api_id" =~ ^[0-9]+$ ]] && break
-      warn 'Telegram API ID 只能包含数字，请重新输入。'
-    done
-    while true; do
-      prompt_secret telegram_api_hash 'Telegram API Hash（32 位十六进制）'
-      [[ "$telegram_api_hash" =~ ^[0-9a-fA-F]{32}$ ]] && break
-      warn 'Telegram API Hash 应为 32 位十六进制字符串，请重新输入。'
-    done
-  else
-    ENABLE_BOT_API=false
-  fi
-
-  prompt_value app_url '站点公开 URL（含 http/https）' 'http://127.0.0.1:3000'
-  prompt_value cors_origins '允许跨域来源（多个用逗号分隔）' "$app_url"
-  if [[ "$app_url" == https://* ]]; then secure_cookie=true; else secure_cookie=false; fi
-
-  jwt_secret=$(generate_hex 48)
-  code_hmac_secret=$(generate_hex 48)
-  info '已生成 384 位随机 JWT 密钥和验证码 HMAC 密钥。'
-
-  if yes_no '是否启用 SMTP 邮件功能？' n; then
-    ENABLE_SMTP=true
-    prompt_value smtp_host 'SMTP 主机'
-    prompt_value smtp_port 'SMTP 端口' '587'
-    if yes_no 'SMTP 是否使用 TLS 直连（通常端口 465）？' n; then smtp_secure=true; else smtp_secure=false; fi
-    prompt_value smtp_user 'SMTP 用户名'
-    prompt_secret smtp_password 'SMTP 密码/授权码'
-    prompt_value smtp_from '发件人地址' "$smtp_user"
-    smtp_key=$(generate_hex 32)
-    smtp_salt=$(generate_hex 16)
-    info '已生成 256 位 SMTP 加密密钥和 128 位随机盐。'
-  else
-    ENABLE_SMTP=false
-  fi
-
+write_app_env() {
   umask 077
   : > "$APP_ENV"
   {
@@ -558,6 +490,166 @@ LOG_RETENTION_DAYS=7
 EOF
   chmod 600 "$APP_ENV"
   success "配置已写入 $APP_ENV"
+}
+
+# ---------------------------------------------------------------------------
+# 非交互配置：无人值守安装（install.sh --yes / 自动化）
+#
+# 为什么单独一个函数而不是给 configure() 加分支：交互版有 20 多个提示与校验循环，
+# 插分支会把它变成不可读的迷宫。这里只负责「从环境变量取值 → 调 write_app_env」，
+# 两边的 .env 写入逻辑共用同一份实现（write_app_env），不会出现格式漂移。
+#
+# 必填：NEBULA_TELEGRAM_BOT_TOKEN、NEBULA_TELEGRAM_CHAT_ID（应用启动会校验，缺失直接拒绝）。
+# 其余均有默认值；JWT_SECRET / CODE_HMAC_SECRET 未提供时自动生成。
+# ---------------------------------------------------------------------------
+configure_noninteractive() {
+  local missing=()
+  [[ -n "${NEBULA_TELEGRAM_BOT_TOKEN:-}" ]] || missing+=('NEBULA_TELEGRAM_BOT_TOKEN')
+  [[ -n "${NEBULA_TELEGRAM_CHAT_ID:-}" ]] || missing+=('NEBULA_TELEGRAM_CHAT_ID')
+  if (( ${#missing[@]} > 0 )); then
+    die "非交互模式缺少必填环境变量：${missing[*]}（示例：NEBULA_TELEGRAM_BOT_TOKEN=123456:abc NEBULA_TELEGRAM_CHAT_ID=-1001234567890 $0 --yes）"
+  fi
+
+  DB_TYPE=${NEBULA_DB_TYPE:-sqlite}
+  case "$DB_TYPE" in
+    sqlite|postgres) ;;
+    *) die "NEBULA_DB_TYPE 只能是 sqlite 或 postgres（当前：${DB_TYPE}）" ;;
+  esac
+
+  local app_url cors_origins redis_host redis_port redis_password redis_db
+  local bot_token chat_id secure_cookie jwt_secret code_hmac_secret
+  local db_host db_port db_user db_password db_name db_ssl
+
+  app_url=${NEBULA_APP_URL:-http://127.0.0.1:3000}
+  cors_origins=${NEBULA_CORS_ORIGINS:-$app_url}
+  if [[ "$app_url" == https://* ]]; then secure_cookie=true; else secure_cookie=false; fi
+
+  jwt_secret=${NEBULA_JWT_SECRET:-$(generate_hex 48)}
+  code_hmac_secret=${NEBULA_CODE_HMAC_SECRET:-$(generate_hex 48)}
+
+  if [[ "$DB_TYPE" == postgres ]]; then
+    db_host=${NEBULA_DB_HOST:-127.0.0.1}
+    db_port=${NEBULA_DB_PORT:-5432}
+    db_user=${NEBULA_DB_USERNAME:-postgres}
+    db_password=${NEBULA_DB_PASSWORD:-}
+    db_name=${NEBULA_DB_DATABASE:-nebula}
+    db_ssl=${NEBULA_DB_SSL:-false}
+    [[ -n "$db_password" ]] || die 'NEBULA_DB_TYPE=postgres 时必须提供 NEBULA_DB_PASSWORD'
+  else
+    db_name=${NEBULA_DB_DATABASE:-./data/nebula.sqlite}
+  fi
+
+  redis_host=${NEBULA_REDIS_HOST:-127.0.0.1}
+  redis_port=${NEBULA_REDIS_PORT:-6379}
+  redis_password=${NEBULA_REDIS_PASSWORD:-}
+  redis_db=${NEBULA_REDIS_DB:-0}
+
+  bot_token=$NEBULA_TELEGRAM_BOT_TOKEN
+  chat_id=$NEBULA_TELEGRAM_CHAT_ID
+  [[ "$bot_token" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] || die 'NEBULA_TELEGRAM_BOT_TOKEN 格式应为 <bot_id>:<token>'
+
+  # 内置 Bot API：只有在提供了 API_ID/HASH 时才启用（否则会因缺少凭据无法启动）
+  if [[ -n "${NEBULA_TELEGRAM_API_ID:-}" && -n "${NEBULA_TELEGRAM_API_HASH:-}" ]]; then
+    ENABLE_BOT_API=true
+    telegram_api_id=$NEBULA_TELEGRAM_API_ID
+    telegram_api_hash=$NEBULA_TELEGRAM_API_HASH
+    [[ "$telegram_api_id" =~ ^[0-9]+$ ]] || die 'NEBULA_TELEGRAM_API_ID 只能包含数字'
+    [[ "$telegram_api_hash" =~ ^[0-9a-fA-F]{32}$ ]] || die 'NEBULA_TELEGRAM_API_HASH 应为 32 位十六进制'
+  else
+    ENABLE_BOT_API=false
+    telegram_api_id=''
+    telegram_api_hash=''
+  fi
+
+  # SMTP 同理：填了主机才启用
+  if [[ -n "${NEBULA_SMTP_HOST:-}" ]]; then
+    ENABLE_SMTP=true
+    smtp_host=$NEBULA_SMTP_HOST
+    smtp_port=${NEBULA_SMTP_PORT:-587}
+    smtp_secure=${NEBULA_SMTP_SECURE:-false}
+    smtp_user=${NEBULA_SMTP_USER:-}
+    smtp_password=${NEBULA_SMTP_PASSWORD:-}
+    smtp_from=${NEBULA_SMTP_FROM:-$smtp_user}
+    smtp_key=$(generate_hex 32)
+    smtp_salt=$(generate_hex 16)
+  else
+    ENABLE_SMTP=false
+    smtp_host=''; smtp_port=''; smtp_secure=''; smtp_user=''; smtp_password=''; smtp_from=''; smtp_key=''; smtp_salt=''
+  fi
+
+  write_app_env
+}
+
+configure() {
+  local app_url cors_origins redis_host redis_port redis_password redis_db
+  local bot_token chat_id secure_cookie jwt_secret code_hmac_secret
+  local db_host db_port db_user db_password db_name db_ssl
+  local smtp_host smtp_port smtp_secure smtp_user smtp_password smtp_from smtp_key smtp_salt
+  local telegram_api_id telegram_api_hash
+
+  printf '\n=== NEBULA 首次配置 ===\n'
+  choose_database
+
+  if [[ "$DB_TYPE" == "postgres" ]]; then
+    prompt_value db_host 'PostgreSQL 主机' '127.0.0.1'
+    prompt_value db_port 'PostgreSQL 端口' '5432'
+    prompt_value db_user 'PostgreSQL 用户名' 'postgres'
+    prompt_secret db_password 'PostgreSQL 密码'
+    prompt_value db_name 'PostgreSQL 数据库名' 'nebula'
+    if yes_no 'PostgreSQL 是否启用 SSL 证书校验？' n; then db_ssl=true; else db_ssl=false; fi
+  else
+    db_name='./data/nebula.sqlite'
+  fi
+
+  configure_redis redis_host redis_port redis_password redis_db
+
+  while true; do
+    prompt_secret bot_token 'Telegram Bot Token'
+    [[ "$bot_token" =~ ^[0-9]+:[A-Za-z0-9_-]+$ ]] && break
+    warn 'Token 格式应为 <bot_id>:<token>，请重新输入。'
+  done
+  prompt_value chat_id 'Telegram 存储 Chat ID'
+
+  if yes_no '是否启用发布包内置 Telegram Bot API？' y; then
+    ENABLE_BOT_API=true
+    while true; do
+      prompt_value telegram_api_id 'Telegram API ID（纯数字）'
+      [[ "$telegram_api_id" =~ ^[0-9]+$ ]] && break
+      warn 'Telegram API ID 只能包含数字，请重新输入。'
+    done
+    while true; do
+      prompt_secret telegram_api_hash 'Telegram API Hash（32 位十六进制）'
+      [[ "$telegram_api_hash" =~ ^[0-9a-fA-F]{32}$ ]] && break
+      warn 'Telegram API Hash 应为 32 位十六进制字符串，请重新输入。'
+    done
+  else
+    ENABLE_BOT_API=false
+  fi
+
+  prompt_value app_url '站点公开 URL（含 http/https）' 'http://127.0.0.1:3000'
+  prompt_value cors_origins '允许跨域来源（多个用逗号分隔）' "$app_url"
+  if [[ "$app_url" == https://* ]]; then secure_cookie=true; else secure_cookie=false; fi
+
+  jwt_secret=$(generate_hex 48)
+  code_hmac_secret=$(generate_hex 48)
+  info '已生成 384 位随机 JWT 密钥和验证码 HMAC 密钥。'
+
+  if yes_no '是否启用 SMTP 邮件功能？' n; then
+    ENABLE_SMTP=true
+    prompt_value smtp_host 'SMTP 主机'
+    prompt_value smtp_port 'SMTP 端口' '587'
+    if yes_no 'SMTP 是否使用 TLS 直连（通常端口 465）？' n; then smtp_secure=true; else smtp_secure=false; fi
+    prompt_value smtp_user 'SMTP 用户名'
+    prompt_secret smtp_password 'SMTP 密码/授权码'
+    prompt_value smtp_from '发件人地址' "$smtp_user"
+    smtp_key=$(generate_hex 32)
+    smtp_salt=$(generate_hex 16)
+    info '已生成 256 位 SMTP 加密密钥和 128 位随机盐。'
+  else
+    ENABLE_SMTP=false
+  fi
+
+  write_app_env
 }
 
 unit_escape() {
@@ -786,13 +878,22 @@ main() {
   ensure_root "$@"
   ensure_current_layout
 
+  local noninteractive=0
   case "${1:-}" in
     --help|-h)
-      printf '用法：./start.sh\n全新环境进入首次部署；发现已有服务、配置或后端数据时进入服务管理菜单。脚本不提供升级、迁移或重配置功能。\n'
+      printf '%s\n' \
+        '用法：./start.sh [--yes]' \
+        '  无参数：全新环境进入首次部署；发现已有服务、配置或后端数据时进入服务管理菜单。' \
+        '  --yes：非交互首次部署，配置全部来自 NEBULA_* 环境变量（供 install.sh / 自动化调用）。' \
+        '         必填：NEBULA_TELEGRAM_BOT_TOKEN、NEBULA_TELEGRAM_CHAT_ID' \
+        '         可选：NEBULA_DB_TYPE(sqlite|postgres)、NEBULA_APP_URL、NEBULA_REDIS_HOST/PORT、' \
+        '               NEBULA_TELEGRAM_API_ID/HASH（提供则启用内置 Bot API）、NEBULA_SMTP_HOST 等' \
+        '  脚本不提供升级、迁移或重配置功能（升级用 upgrade.sh）。'
       exit
       ;;
+    --yes|-y) noninteractive=1 ;;
     '') ;;
-    *) die "首次部署脚本不接受参数：$1" ;;
+    *) die "不支持参数：$1（可用：--yes / --help）" ;;
   esac
 
   if existing_deployment_detected; then
@@ -802,7 +903,12 @@ main() {
   fi
 
   ensure_runtime_dirs
-  configure
+  if [[ "$noninteractive" == 1 ]]; then
+    info '非交互模式：配置来自 NEBULA_* 环境变量。'
+    configure_noninteractive
+  else
+    configure
+  fi
   info "服务将直接使用执行用户 $SERVICE_USER 运行。"
   prepare_permissions "$SERVICE_USER"
   install_services "$SERVICE_USER"

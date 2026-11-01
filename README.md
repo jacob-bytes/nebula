@@ -46,6 +46,16 @@ docker compose logs -f app     # 看迁移与启动日志
 
 ## 其他部署方式
 
+### 一键安装（Linux / systemd，推荐给裸机）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/install.sh | sudo bash
+```
+
+下载发行包 → **验签** → 解压到 `/opt/nebula/releases/<版本>` → 切 `current` → 调 `start.sh`
+完成配置与 systemd 安装。默认 SQLite（免装数据库），不接管反向代理与证书。
+无人值守用 `--yes` + `NEBULA_*` 环境变量，详见 [docs/deployment.md](docs/deployment.md)。
+
 ### 裸机部署（Linux，不用容器）
 
 **前置**：Node.js 22、PostgreSQL 14+、Redis 7；若要自建本地 Bot API，还需 CMake 与 C++ 工具链（见 `telegram-bot-api/README.md`）。
