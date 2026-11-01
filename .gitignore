@@ -100,3 +100,6 @@ beta/
 .tmp-preview/
 # 生成的 data-migrator 构建产物（由 npm run build:data-migrator 重建）
 backend/dist-migrator/
+# 发布签名私钥（只允许存在于 CI secret 或离线介质）
+.secrets/
+*.pem.tmp

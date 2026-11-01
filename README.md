@@ -222,15 +222,37 @@ git push origin main --tags
 说明直接取自 `CHANGELOG.md` 对应小节，不需要任何 secret。历史 tag 可在
 Actions → Release notes → Run workflow（勾选 `backfill`）一次性补齐。
 
-需要**可下载的发行包**时另走 `Release` 工作流（手动触发，勾选 `publish`）：它会构建
-Linux x64 ZIP、签名并上传资产。前提是配置签名密钥：
+需要**可下载的发行包**（Linux x64 ZIP）时另走 `Release` 工作流（手动触发，勾选 `publish`）：
+它会构建、**用私钥签名 SHA256SUMS**、再上传资产。签名链路是：
 
-```bash
-# 生成 RSA-3072 密钥对（私钥只进 GitHub secret，绝不入库）
-openssl genrsa -out release-signing-key.pem 3072
-openssl rsa -in release-signing-key.pem -pubout -out scripts/release/update-public-key.pem
-# 然后把 release-signing-key.pem 的内容存为仓库 secret：RELEASE_SIGNING_KEY
 ```
+CI secret(RELEASE_SIGNING_KEY, 私钥)  ──签名──▶  SHA256SUMS.sig
+                                          ▲
+scripts/release/update-public-key.pem ──验签──┘   （部署端同款：upgrade.sh / validate-release.sh）
+```
+
+### 配置签名密钥（一次性）
+
+仓库已内置一对可用的密钥（公钥已提交）。**私钥在本仓库工作区的
+`.secrets/release-signing-key.pem`（已在 `.gitignore` 中）**，把它填进 GitHub：
+
+1. 打开仓库 **Settings → Secrets and variables → Actions → New repository secret**
+2. Name 填 **`RELEASE_SIGNING_KEY`**（大小写必须完全一致）
+3. Secret 一栏**整段粘贴**私钥内容，包括首尾的
+   `-----BEGIN PRIVATE KEY-----` / `-----END PRIVATE KEY-----`
+4. 保存后执行 `rm -rf .secrets`（或把文件转移到离线密码管理器）
+
+GitHub 保存后不可再读取，只可覆盖；要确认是否配对，跑一次 `Release` 工作流即可——
+`sign-release.sh` 会立刻用内置公钥自检，不匹配会丢弃签名并失败。
+
+> 想用自己生成的密钥：`openssl genrsa -out key.pem 3072` 后
+> `openssl rsa -in key.pem -pubout -out scripts/release/update-public-key.pem`，
+> 提交新公钥并更新 secret。**换密钥后旧发行包的签名将无法验证**。
+
+### 轮换 / 泄露处理
+
+私钥泄露时：生成新密钥对 → 提交新公钥 → 覆盖 secret → 重发尚未被下载的版本。
+已发布的旧包签名无法用新公钥验证，需在 Release 说明里注明。
 
 配置完成后可把 `.github/workflows/release.yml` 的触发方式改回 `push: tags`。
 

@@ -6,6 +6,29 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.15.5] - 2026-11-01
+
+配置发行签名链路：替换为自有密钥对，并补操作文档。
+
+### 变更
+
+- **`scripts/release/update-public-key.pem` 替换为自有公钥**（RSA-3072）。原文件是上游作者
+  的公钥，用它无法验证我们的发行包——即使加了 secret 也会在 `sign-release.sh` 的自检处失败。
+- 私钥生成在工作区 `.secrets/release-signing-key.pem`（`chmod 600`，已加入 `.gitignore`），
+  需手工填入仓库 secret `RELEASE_SIGNING_KEY`，之后删除该文件或转存离线介质。
+
+### 文档
+
+- README「发版流程」补「配置签名密钥」与「轮换 / 泄露处理」：GitHub 入口路径、
+  secret 名称大小写、整段 PEM 粘贴（含 BEGIN/END）、保存后不可读取、以及换密钥会让
+  旧发行包签名失效。
+
+### 验证
+
+- 本地端到端：用新私钥签名 `SHA256SUMS` → 用入库公钥验签 **Verified OK**；
+  篡改内容后验签失败（bad signature）。
+- `sign-release.sh` 实际执行通过（含内置公钥自检）；`verify-key-override.test.sh` 4 项通过。
+
 ## [0.15.4] - 2026-11-01
 
 补齐 GitHub Release 的自动化发布。
