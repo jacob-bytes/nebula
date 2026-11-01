@@ -180,4 +180,8 @@ bash "$ROOT_DIR/scripts/release/validate-release.sh" "$OUTPUT_DIR/$ARCHIVE_NAME"
   printf '%s\n' "$RELEASE_NOTES_TEXT"
 } > "$OUTPUT_DIR/RELEASE.txt"
 
+# 安装脚本同时作为发行资产：raw.githubusercontent 的 CDN 有 5 分钟缓存，
+# 改动后用户可能拉到旧版本（真实踩过）；版本化资产不可变，可长期引用。
+cp "$ROOT_DIR/scripts/install.sh" "$OUTPUT_DIR/install.sh"
+
 echo "发布完成：$OUTPUT_DIR"

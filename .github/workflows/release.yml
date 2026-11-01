@@ -114,6 +114,7 @@ jobs:
             "$release_dir/SHA256SUMS.sig"
             "$release_dir/release-manifest.json"
             "$release_dir/RELEASE.txt"
+            "$release_dir/install.sh"
           )
           for asset in "${assets[@]}"; do
             [[ -s "$asset" ]] || { echo "缺少发行资产：$asset" >&2; exit 1; }

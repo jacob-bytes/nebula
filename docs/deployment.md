@@ -13,7 +13,7 @@
 
 ```bash
 # 交互式（逐项提问，适合第一次装）
-curl -fsSL https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/install.sh | sudo bash
+curl -fsSL "https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/install.sh?ts=$(date +%s)" | sudo bash
 
 # 无人值守（配置全部来自 NEBULA_* 环境变量）
 sudo NEBULA_TELEGRAM_BOT_TOKEN=123456:abc \

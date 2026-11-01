@@ -42,7 +42,11 @@ curl -s localhost:3000/api/health
 ### 1.2 一键安装（Linux / systemd）
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/install.sh | sudo bash
+# 从分支取脚本：raw.githubusercontent 有 5 分钟 CDN 缓存，加时间戳可避免拿到旧版本
+curl -fsSL "https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/install.sh?ts=$(date +%s)" | sudo bash
+
+# 或从某个正式版本取（不可变，长期稳定）：发行资产里也带 install.sh
+curl -fsSL https://github.com/jacob-bytes/nebula/releases/latest/download/install.sh | sudo bash
 ```
 
 下载发行包 → 验签 → 解压到 `/opt/nebula/releases/<版本>` → 切换 `current` → 调 `start.sh`。
