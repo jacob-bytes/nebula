@@ -6,6 +6,24 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.15.4] - 2026-11-01
+
+补齐 GitHub Release 的自动化发布。
+
+### 新增
+
+- `.github/workflows/release-notes.yml`：tag 推送时用 `GITHUB_TOKEN` 创建 GitHub Release，
+  说明取自 `CHANGELOG.md` 对应小节；已存在同名 Release 时跳过，避免覆盖后续由
+  `release.yml` 产出的带制品正式发布。支持 `workflow_dispatch` 的 `backfill`
+  为历史 tag 一次性补建。
+- README「发版流程」：版本号唯一来源、CHANGELOG 小节要求、tag 推送后的自动化行为、
+  以及需要可下载发行包时的签名密钥配置步骤。
+
+### 背景
+
+仓库此前有 19 个 tag 但 0 个 Release——`gh release create` 只存在于需要
+`RELEASE_SIGNING_KEY` 的发布流水线里，缺少该 secret 时整条流水线不会走到发布步骤。
+
 ## [0.15.3] - 2026-11-01
 
 修复 CI 红灯：shell 变量解析、发行说明来源、DI 守卫误判。

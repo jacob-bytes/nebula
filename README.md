@@ -205,6 +205,35 @@ node scripts/rename-brand.mjs myslug 我的网盘 MyPan     # 全仓改名（包
 
 许可证为 [GPL-3.0](LICENSE)，上游版权与许可声明必须保留，见 [NOTICE](NOTICE)。若以二进制或镜像形式对外分发，须同时提供对应源码。`telegram-bot-api/` 为 Boost 1.0 许可，可独立商用。
 
+## 发版流程
+
+版本号唯一来源是 `VERSION`，必须与前后端 `package.json`、两份 lockfile 根包版本一致
+（`bash scripts/release/check-version.sh` 会校验）。
+
+```bash
+# 1. 改版本号（VERSION + 四个清单 + 两份 lockfile）
+# 2. 在 CHANGELOG.md 顶部加一节：## [x.y.z] - YYYY-MM-DD
+# 3. 提交并打 tag
+git tag -a v0.16.0 -m "星云盘 v0.16.0"
+git push origin main --tags
+```
+
+推送 tag 后，`Release notes` 工作流会用 `GITHUB_TOKEN` **自动创建 GitHub Release**，
+说明直接取自 `CHANGELOG.md` 对应小节，不需要任何 secret。历史 tag 可在
+Actions → Release notes → Run workflow（勾选 `backfill`）一次性补齐。
+
+需要**可下载的发行包**时另走 `Release` 工作流（手动触发，勾选 `publish`）：它会构建
+Linux x64 ZIP、签名并上传资产。前提是配置签名密钥：
+
+```bash
+# 生成 RSA-3072 密钥对（私钥只进 GitHub secret，绝不入库）
+openssl genrsa -out release-signing-key.pem 3072
+openssl rsa -in release-signing-key.pem -pubout -out scripts/release/update-public-key.pem
+# 然后把 release-signing-key.pem 的内容存为仓库 secret：RELEASE_SIGNING_KEY
+```
+
+配置完成后可把 `.github/workflows/release.yml` 的触发方式改回 `push: tags`。
+
 ## 许可证
 
 GNU General Public License v3.0

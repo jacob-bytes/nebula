@@ -1,0 +1,91 @@
+name: Release notes
+
+# 目的：让每个版本 tag 都有对应的 GitHub Release（版本说明来自 CHANGELOG.md）。
+#
+# 与 .github/workflows/release.yml 的分工：
+#   - 本工作流：**只发布版本说明**，不需要任何 secret，tag 推送即自动生成；
+#     已存在同名 Release 时跳过，因此晚些时候由 release.yml 产出的「带签名制品」的
+#     正式 Release 不会被这里覆盖。
+#   - release.yml：构建 Linux x64 发行包 + 签名 + 上传资产，需要 RELEASE_SIGNING_KEY
+#     与 scripts/release/update-public-key.pem 配对，当前手动触发。
+#
+# 历史 tag 补发：在 Actions → Release notes → Run workflow 勾选 backfill 即可，
+# 会遍历所有 v*.*.* tag，只为缺失的补建。
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: '为所有历史 tag 补建缺失的 Release'
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-notes
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish release notes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # 需要完整 tag 列表与 CHANGELOG
+
+      - name: Create missing releases from CHANGELOG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+
+          # 从 CHANGELOG.md 抽取指定版本的整个小节（含标题行）
+          extract_notes() {
+            local version=$1
+            awk -v ver="$version" '
+              $0 ~ "^## \\[" ver "\\]" { inside = 1; print; next }
+              inside && /^## \[/ { inside = 0 }
+              inside { print }
+            ' CHANGELOG.md
+          }
+
+          # 当前最高版本（用于 --latest）
+          highest=$(git tag --list 'v*.*.*' | sort -V | tail -1)
+
+          create_one() {
+            local tag=$1 version=${1#v} notes
+            if gh release view "$tag" >/dev/null 2>&1; then
+              printf '跳过 %s：Release 已存在\n' "$tag"
+              return 0
+            fi
+            notes=$(extract_notes "$version")
+            if [[ -z "$notes" ]]; then
+              printf '跳过 %s：CHANGELOG.md 中没有该版本小节\n' "$tag" >&2
+              return 0
+            fi
+            local latest_flag=()
+            [[ "$tag" == "$highest" ]] && latest_flag=(--latest)
+            printf '创建 %s\n' "$tag"
+            gh release create "$tag" \
+              --title "星云盘 ${tag}" \
+              --notes "$notes" \
+              --verify-tag \
+              "${latest_flag[@]}"
+          }
+
+          if [[ "${GITHUB_EVENT_NAME}" == 'push' ]]; then
+            create_one "${GITHUB_REF_NAME}"
+          else
+            # 倒序创建：先建最高版本（--latest 依此生效），再补齐历史
+            for tag in $(git tag --list 'v*.*.*' | sort -rV); do
+              create_one "$tag"
+            done
+          fi
