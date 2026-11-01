@@ -22,7 +22,7 @@ for fn in resolve_version_with_asset fetch; do
   # 排除定义行与注释行，剩下的第一处出现即视为调用点
   call_line=$(grep -n "$fn" "$INSTALL" | grep -vE ":[[:space:]]*#|:${fn}\(\)" | head -1 | cut -d: -f1)
   [[ -n "$def_line" ]] || die "install.sh 缺少函数 $fn"
-  [[ -n "$call_line" ]] || die "install.sh 未调用 $fn（用例失去意义）"
+  [[ -n "$call_line" ]] || die "install.sh 未调用 ${fn}（用例失去意义）"
   if (( def_line > call_line )); then
     die "$fn 定义在第 ${def_line} 行，却在第 ${call_line} 行被调用（bash 顺序执行）"
   fi

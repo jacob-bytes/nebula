@@ -6,6 +6,22 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.10] - 2026-11-01
+
+修复发布门禁被自己的用例卡住（`$fn（` 括号问题）。
+
+### 修复
+
+- `install-resolver.test.sh` 里 `"...未调用 $fn（..."` 触发了自建的
+  `check-shell-var-braces` 门禁（bash 在 UTF-8 locale 下会把全角括号并入变量名）。
+  该门禁在 `Parse and lint release scripts` 步骤先于测试执行，因此整条
+  发行流水线在 0.29.7–0.29.9 上都没能产出 ZIP。已改为 `${fn}`。
+
+### 教训
+
+- 这个门禁已经三次拦住我自己写的代码，说明它有效；问题在于我提交前没有在本地跑它。
+  现在 CI 顺序不变，仍会在 lint 阶段直接失败（fail-fast 是对的）。
+
 ## [0.29.9] - 2026-11-01
 
 未初始化时引导到向导页；Chat ID 格式提前校验。
