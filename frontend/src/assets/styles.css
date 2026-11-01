@@ -417,8 +417,15 @@ body {
 .sidebar-user-role { font-size: 11px; color: var(--seed-primary); font-weight: 500; }
 
 .main-content {
-  flex: 1; padding: 28px 32px;
+  /* 顶栏需要通栏（含左侧折叠按钮），因此 padding 下放到 .main-inner */
+  flex: 1; padding: 0;
+  display: flex; flex-direction: column;
   overflow-y: auto; min-height: 100vh;
+}
+
+.main-inner {
+  flex: 1;
+  padding: 28px 32px;
 }
 
 .page-header { margin-bottom: 24px; }
@@ -582,7 +589,6 @@ body {
 /* ============================================================
    11. MOBILE MENU BUTTON
    ============================================================ */
-.mobile-menu-btn { display: none; }
 
 /* ============================================================
    12. REDUCED MOTION
@@ -623,7 +629,7 @@ body {
 
 /* --- Tablet (≤ 1024px) --- */
 @media (max-width: 1024px) {
-  .main-content { padding: 24px 20px; }
+  .main-inner { padding: 24px 20px; }
   .stats-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 }
 
@@ -631,15 +637,6 @@ body {
 @media (max-width: 768px) {
   .sidebar { display: none; }
 
-  .mobile-menu-btn {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 44px; height: 44px;
-    background: transparent; border: 1px solid var(--border-default);
-    border-radius: var(--radius-sm); cursor: pointer;
-    font-size: 20px; color: var(--text-primary);
-    margin-bottom: 16px; transition: border-color var(--duration-fast);
-  }
-  .mobile-menu-btn:hover { border-color: var(--border-strong); background: var(--color-bg-hover); }
 
   .main-content { padding: 16px; }
 
@@ -688,8 +685,7 @@ body {
 
 /* --- Desktop-Only --- */
 @media (min-width: 769px) {
-  .mobile-menu-btn { display: none; }
-  .mobile-card-list { display: none; }
+    .mobile-card-list { display: none; }
 }
 
 /* ============================================================

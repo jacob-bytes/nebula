@@ -39,56 +39,6 @@
       </template>
     </nav>
 
-    <div class="sidebar-footer">
-      <button
-        v-if="collapsible"
-        type="button"
-        class="sidebar-collapse-btn"
-        :aria-expanded="!collapsed"
-        :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
-        :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
-        @click="emit('toggleCollapse')"
-      >
-        <span class="collapse-icon" :class="{ 'is-collapsed': collapsed }" aria-hidden="true">
-          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M12 5l-5 5 5 5"/>
-          </svg>
-        </span>
-        <span class="nav-label">收起侧边栏</span>
-      </button>
-
-      <div class="sidebar-user">
-        <div class="sidebar-user-avatar">{{ avatarLetter }}</div>
-        <div class="sidebar-user-info">
-          <div class="sidebar-user-email" :title="email">{{ email }}</div>
-          <div class="sidebar-user-role">{{ roleText }}</div>
-        </div>
-      </div>
-      <!-- 折叠态：文字按钮会溢出 72px 侧栏，改为带无障碍名称的图标按钮 -->
-      <t-button
-        v-if="!collapsed"
-        variant="outline"
-        theme="danger"
-        size="small"
-        block
-        @click="emit('logout')"
-      >
-        退出登录
-      </t-button>
-      <button
-        v-else
-        type="button"
-        class="sidebar-logout-compact"
-        aria-label="退出登录"
-        title="退出登录"
-        @click="emit('logout')"
-      >
-        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-          <path d="M12 3H5a2 2 0 00-2 2v10a2 2 0 002 2h7"/>
-          <path d="M14 7l3 3-3 3M17 10H8"/>
-        </svg>
-      </button>
-    </div>
   </div>
 </template>
 
@@ -101,19 +51,13 @@ import { usePublicConfigStore } from '../stores/public-config';
 
 const props = defineProps<{
   role: UserRole;
-  email: string;
-  roleText: string;
-  avatarLetter: string;
   /** 桌面栏折叠态：只留图标，名称走 title 提示 */
   collapsed?: boolean;
-  /** 是否显示折叠开关（移动端抽屉里不显示） */
-  collapsible?: boolean;
 }>();
 
+// 账号信息与退出登录已迁到顶栏（AppHeader），侧栏不再承担账号相关操作
 const emit = defineEmits<{
   navigate: [];
-  logout: [];
-  toggleCollapse: [];
 }>();
 
 const route = useRoute();
@@ -193,5 +137,13 @@ const visibleAdminNav = computed(() => adminNav.filter((item) => hasAnyRole(prop
   flex-direction: column;
   height: 100%;
   min-height: 0;
+}
+
+/* 底部账号区已迁到顶栏：导航本体接管整个可用高度并自行滚动 */
+.sidebar-nav {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 16px;
 }
 </style>

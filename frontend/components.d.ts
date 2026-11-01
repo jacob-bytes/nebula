@@ -13,6 +13,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AlertBanner: typeof import('./src/components/AlertBanner.vue')['default']
     ApiKeyManager: typeof import('./src/components/settings/ApiKeyManager.vue')['default']
+    AppHeader: typeof import('./src/components/AppHeader.vue')['default']
     ConflictResolveDialog: typeof import('./src/components/ConflictResolveDialog.vue')['default']
     CreateShareDialog: typeof import('./src/components/share/CreateShareDialog.vue')['default']
     CustomVideoPlayer: typeof import('./src/components/file/CustomVideoPlayer.vue')['default']

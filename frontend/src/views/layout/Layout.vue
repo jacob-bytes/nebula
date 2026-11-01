@@ -7,28 +7,34 @@
     <aside class="sidebar">
       <SideNav
         :role="authStore.user?.role || 'user'"
-        :email="authStore.user?.email || ''"
-        :role-text="roleText"
-        :avatar-letter="avatarLetter"
         :collapsed="sidebarCollapsed"
-        collapsible
-        @toggle-collapse="toggleSidebar"
-        @logout="handleLogout"
       />
     </aside>
 
     <!-- 主内容区（双栏布局右栏） -->
     <main id="main-content" class="main-content">
-      <button class="mobile-menu-btn" @click="drawerVisible = true" aria-label="打开菜单">
-        <svg width="18" height="18" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/></svg>
-      </button>
-      <AlertBanner />
-      <div class="route-view-container">
+      <!-- 头部：折叠按钮 | 面包屑 …… 账号菜单（原侧栏底部） -->
+      <AppHeader
+        :breadcrumbs="breadcrumbs"
+        :collapsed="sidebarCollapsed"
+        :is-mobile="isMobile"
+        :email="authStore.user?.email || ''"
+        :role-text="roleText"
+        :avatar-letter="avatarLetter"
+        @toggle-collapse="toggleSidebar"
+        @open-drawer="drawerVisible = true"
+        @open-settings="router.push('/settings')"
+        @logout="handleLogout"
+      />
+      <div class="main-inner">
+        <AlertBanner />
+        <div class="route-view-container">
         <router-view v-slot="{ Component, route }">
           <transition name="slide-up">
             <component :is="Component" :key="route.path" />
-          </transition>
-        </router-view>
+            </transition>
+          </router-view>
+        </div>
       </div>
     </main>
 
@@ -45,11 +51,7 @@
       <div class="drawer-content">
         <SideNav
           :role="authStore.user?.role || 'user'"
-          :email="authStore.user?.email || ''"
-          :role-text="roleText"
-          :avatar-letter="avatarLetter"
           @navigate="drawerVisible = false"
-          @logout="handleLogout"
         />
       </div>
     </t-drawer>
@@ -68,6 +70,9 @@ import type { UserRole } from '../../types/user';
 import AlertBanner from '../../components/AlertBanner.vue';
 import SideNav from '../../components/SideNav.vue';
 import UploadProgressIndicator from '../../components/UploadProgressIndicator.vue';
+import AppHeader from '../../components/AppHeader.vue';
+import { useBreadcrumbs } from '../../composables/useBreadcrumbs';
+import { useMobile } from '../../composables/useMobile';
 
 const router = useRouter();
 const route = useRoute();
@@ -75,6 +80,8 @@ const authStore = useAuthStore();
 const { user } = storeToRefs(authStore);
 
 const drawerVisible = ref(false);
+const breadcrumbs = useBreadcrumbs();
+const isMobile = useMobile();
 
 /**
  * 桌面侧边栏折叠。
