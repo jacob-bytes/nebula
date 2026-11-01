@@ -15,6 +15,16 @@
       </div>
     </div>
 
+    <!-- 配额预警：只在接近上限时出现，避免常驻噪音 -->
+    <div v-if="quotaWarning" class="quota-banner" :data-level="quotaWarning.level" role="status">
+      <span class="quota-banner-text">
+        存储已使用 <strong>{{ quotaWarning.percent }}%</strong>
+        （已用 {{ formatSize(quotaWarning.usedBytes) }} / {{ formatSize(quotaWarning.quotaBytes) }}），
+        超出上限后将无法继续上传。
+      </span>
+      <router-link to="/settings" class="quota-banner-link">查看配额</router-link>
+    </div>
+
     <!-- ① 地址栏：文件路径 + 新建文件夹 / 上传（M6 拆出为展示组件） -->
     <FileListAddressBar
       :current-folder-id="folderStore.currentFolderId"
@@ -316,6 +326,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, reactive, watch, onUnmounted } from 'vue';
+import { getMyStorageQuota } from '@/api/quota';
 import { usePageVisibility } from '@/composables/usePageVisibility';
 import { useRouter, useRoute } from 'vue-router';
 import MessagePlugin from '@/utils/message';
@@ -323,7 +334,7 @@ import { DialogPlugin } from 'tdesign-vue-next/es/dialog';
 import { useFileStore } from '../../stores/files';
 import { useAuthStore, api } from '../../stores/auth';
 import { getErrorMessage, getDownloadErrorMessage } from '../../utils/error';
-import { formatDate } from '@/utils/format';
+import { formatDate, formatSize } from '@/utils/format';
 import { useDownloadsStore } from '../../stores/downloads';
 import { useFileListQuery } from '../../composables/useFileListQuery';
 import { useMobile } from '../../composables/useMobile';
@@ -1498,7 +1509,35 @@ async function confirmBatchTags() {
   applyFilters();
 }
 
+/** 配额预警：≥80% 提示，≥95% 用更醒目的样式（由 CSS 的 data-level 控制） */
+const quotaWarning = ref<{ percent: number; usedBytes: number; quotaBytes: number; level: string } | null>(null);
+
+async function loadQuotaWarning(): Promise<void> {
+  try {
+    const quota = await getMyStorageQuota();
+    if (quota.unlimited || !quota.quotaBytes || quota.quotaBytes <= 0) {
+      quotaWarning.value = null;
+      return;
+    }
+    const percent = Math.min(100, Math.round((quota.usedBytes / quota.quotaBytes) * 100));
+    if (percent < 80) {
+      quotaWarning.value = null;
+      return;
+    }
+    quotaWarning.value = {
+      percent,
+      usedBytes: quota.usedBytes,
+      quotaBytes: quota.quotaBytes,
+      level: percent >= 95 ? 'critical' : 'warning',
+    };
+  } catch {
+    // 配额属于辅助信息：拉取失败不影响文件列表本身
+    quotaWarning.value = null;
+  }
+}
+
 onMounted(async () => {
+  void loadQuotaWarning();
   try { await tagStore.fetchTags(); } catch { /* 标签加载失败不阻塞页面 */ }
   try { await folderStore.fetchTree(); } catch { /* 文件夹树加载失败不阻塞页面 */ }
   // 文件列表初始加载由上方 route.query.folder watch（immediate）驱动，此处不重复加载
@@ -1676,4 +1715,30 @@ onUnmounted(() => {
    .os-tag-click:focus-visible）已随 FileListDesktopRows.vue 迁移（M6 拆分） */
 
 /* 响应式：地址栏 / 工具栏 / 移动端返回按钮的窄屏规则已随各自组件迁移（M6 拆分） */
+
+/* 配额预警条：只在 ≥80% 时出现；≥95% 用危险色，避免和普通提示混在一起 */
+.quota-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 40%, var(--border-default));
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.quota-banner[data-level='critical'] {
+  border-color: color-mix(in srgb, var(--destructive) 45%, var(--border-default));
+  background: color-mix(in srgb, var(--destructive) 10%, transparent);
+}
+.quota-banner-text strong { color: var(--text-primary); }
+.quota-banner-link {
+  color: var(--primary);
+  font-weight: 500;
+  white-space: nowrap;
+}
 </style>

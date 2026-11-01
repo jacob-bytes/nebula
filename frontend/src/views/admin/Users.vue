@@ -8,10 +8,28 @@
     <div class="card">
       <div style="display: flex; justify-content: space-between; margin-bottom: 16px; flex-wrap: wrap; gap: 12px;">
         <t-input v-model="searchEmail" placeholder="搜索用户邮箱..." style="width: 300px;" @enter="searchUsers" autocomplete="off" name="admin-search-email" />
-        <t-button theme="primary" @click="showCreateDialog = true">+ 创建用户</t-button>
+        <div class="admin-actions">
+          <t-button
+            v-if="selectedIds.length > 0"
+            theme="default"
+            variant="outline"
+            @click="openBatchQuotaDialog"
+          >
+            批量设置配额（{{ selectedIds.length }}）
+          </t-button>
+          <t-button theme="primary" @click="showCreateDialog = true">+ 创建用户</t-button>
+        </div>
       </div>
 
-      <t-table v-if="!isMobile" :data="users" :columns="columns" row-key="id" hover>
+      <t-table
+        v-if="!isMobile"
+        :data="users"
+        :columns="columns"
+        row-key="id"
+        hover
+        :selected-row-keys="selectedIds"
+        @select-change="onSelectChange"
+      >
         <template #role="{ row }">
           <t-tag :theme="getRoleTheme(row.role)" size="small">
             {{ getRoleText(row.role) }}
@@ -170,13 +188,14 @@
     <!-- 配额设置：三态语义与后端一致（继承默认 / 自定义 / 不限） -->
     <t-dialog
       v-model:visible="showQuotaDialog"
-      header="存储配额"
+      :header="batchMode ? `批量设置配额（${selectedIds.length} 个用户）` : '存储配额'"
       width="520px"
       :on-confirm="saveQuota"
       :confirm-btn="{ loading: quotaSaving }"
     >
       <div v-if="quotaTarget" class="quota-dialog">
-        <p class="quota-user">{{ quotaTarget.email }}</p>
+        <p v-if="!batchMode" class="quota-user">{{ quotaTarget?.email }}</p>
+        <p v-else class="quota-user">将对选中的 {{ selectedIds.length }} 个用户应用同一配额</p>
 
         <div class="quota-usage">
           <span>已用 {{ formatSize(quotaInfo.usedBytes) }}</span>
@@ -212,7 +231,7 @@ import { useMobile } from '../../composables/useMobile';
 import { api, useAuthStore } from '../../stores/auth';
 import { getErrorMessage } from '../../utils/error';
 import { formatDate as formatSafeDate, formatSize } from '../../utils/format';
-import { getUserQuota, setUserQuota, type AdminUserQuota } from '../../api/quota';
+import { getUserQuota, setUserQuota, setUsersQuotaBatch, type AdminUserQuota } from '../../api/quota';
 
 // 当前登录用户（G15-25）：用于禁止管理员对自己执行封禁/删除，避免自我锁定
 const authStore = useAuthStore();
@@ -237,7 +256,15 @@ const searchEmail = ref('');
 const showCreateDialog = ref(false);
 const createForm = ref({ email: '', password: '', role: 'user' });
 
+// ---------- 批量操作 ----------
+const selectedIds = ref<string[]>([]);
+
+function onSelectChange(keys: Array<string | number>): void {
+  selectedIds.value = keys.map(String);
+}
+
 // ---------- 配额设置 ----------
+const batchMode = ref(false);
 const showQuotaDialog = ref(false);
 const quotaSaving = ref(false);
 const quotaTarget = ref<AdminUserRow | null>(null);
@@ -252,7 +279,17 @@ function modeFromQuota(value: number | null): 'inherit' | 'custom' | 'unlimited'
   return 'custom';
 }
 
+function openBatchQuotaDialog(): void {
+  batchMode.value = true;
+  quotaTarget.value = null;
+  quotaMode.value = 'custom';
+  quotaGB.value = 10;
+  quotaInfo.value = { usedBytes: 0, quotaBytes: null, remainingBytes: null, unlimited: true };
+  showQuotaDialog.value = true;
+}
+
 async function openQuotaDialog(row: AdminUserRow) {
+  batchMode.value = false;
   quotaTarget.value = row;
   quotaMode.value = modeFromQuota(row.storageQuotaBytes);
   if (typeof row.storageQuotaBytes === 'number' && row.storageQuotaBytes > 0) {
@@ -268,13 +305,38 @@ async function openQuotaDialog(row: AdminUserRow) {
 }
 
 async function saveQuota(): Promise<boolean> {
-  const target = quotaTarget.value;
-  if (!target) return false;
   const quotaBytes = quotaMode.value === 'inherit'
     ? null
     : quotaMode.value === 'unlimited'
       ? 0
       : Math.round(quotaGB.value * 1024 * 1024 * 1024);
+
+  // 批量模式：一次请求设置所有选中用户
+  if (batchMode.value) {
+    if (selectedIds.value.length === 0) {
+      MessagePlugin.warning('请先选择用户');
+      return false;
+    }
+    quotaSaving.value = true;
+    try {
+      const updated = await setUsersQuotaBatch(selectedIds.value, quotaBytes);
+      for (const row of users.value) {
+        if (selectedIds.value.includes(row.id)) row.storageQuotaBytes = quotaBytes;
+      }
+      MessagePlugin.success(`已更新 ${updated} 个用户的配额`);
+      showQuotaDialog.value = false;
+      selectedIds.value = [];
+      return true;
+    } catch (error: unknown) {
+      MessagePlugin.error(getErrorMessage(error) || '批量设置配额失败');
+      return false;
+    } finally {
+      quotaSaving.value = false;
+    }
+  }
+
+  const target = quotaTarget.value;
+  if (!target) return false;
 
   quotaSaving.value = true;
   try {
@@ -330,6 +392,8 @@ const roleOptions = [
 ];
 
 const columns = [
+  // 多选列：没有这一列时，selected-row-keys 不会渲染出复选框
+  { colKey: 'row-select', type: 'multiple', width: 48 },
   { colKey: 'email', title: '邮箱', width: '200' },
   { colKey: 'role', title: '角色', width: '120' },
   { colKey: 'isBanned', title: '状态', width: '100' },
@@ -552,6 +616,12 @@ onMounted(fetchUsers);
 </style>
 
 <style scoped>
+.admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
 .quota-hint {
   font-size: 12px;
   color: var(--text-tertiary);

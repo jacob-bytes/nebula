@@ -1502,7 +1502,11 @@ export class CacheSessionCoordinator {
         () => (session.completed
           ? coordinator.diskManager.getCachePath(session.fileId)
           : session.tmpPath),
-        () => (session.completed ? coordinator.diskManager.getCachePath(session.fileId) : null),
+        // 发布存在一个真实窗口：leader 先 rename 再置 completed，这期间 tmpPath 已经消失
+        // 而 completed 仍为 false。若 fallback 也按 completed 判断，就会在这个窗口里
+        // 抛 ENOENT（并发冷下载的 follower 偶发失败）。因此 fallback 始终指向正式缓存路径：
+        // 只有 tmpPath 打开失败时才会用到，此时正式文件要么已存在，要么确实不存在（真错误）。
+        () => coordinator.diskManager.getCachePath(session.fileId),
         buffer,
         fileOffset,
         bytes,

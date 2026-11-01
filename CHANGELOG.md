@@ -6,6 +6,34 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.19.0] - 2026-11-01
+
+修复并发冷下载的真实竞态；配额批量设置与用量预警。
+
+### 修复
+
+- **并发冷下载偶发 `ENOENT`**（`file-cache.service.spec.ts` 全量跑约 1/3 概率失败）：
+  根因不是测试脆弱，而是产品代码的真实竞态——leader 先把临时文件 `rename` 为正式缓存、
+  再置 `session.completed`，而 follower 的 fallback 路径只在 `completed` 为真时才指向
+  正式缓存。窗口期内临时路径已消失、`completed` 仍为 false，fallback 返回 null → 直接抛
+  `ENOENT`。改为 fallback 恒指向正式缓存路径（仅在首选路径打开失败时才会用到）。
+  验证：单用例连跑 20 次全过；全量套件连跑 3 次全过。
+
+### 新增
+
+- **配额批量设置**：用户列表加入多选列与「批量设置配额」入口，一次请求应用同一配额
+  （后端 ≤500 上限），成功后同步行状态并清空选择。
+- **用量预警**：文件页在配额使用 ≥80% 时显示横幅（≥95% 转为危险色并提示无法继续上传），
+  附「查看配额」入口；拉取失败不影响文件列表本身。
+- `scripts/ops/selftest.sh`：备份/恢复自检，SQLite 路径可在任意平台跑（5/5 通过），
+  PostgreSQL 路径在有 docker 时启动一次性容器验证。
+
+### 说明
+
+- `upgrade.sh` 整链回归未实现：`upgrade.sh` / `rollback.sh` / `validate-release.sh` 均调用
+  `require_linux`，在 macOS 上无法执行，写出的用例只能盲跑 CI。替代方案是把演练步骤
+  写进部署文档，由运维在 Linux 主机上执行。
+
 ## [0.18.1] - 2026-11-01
 
 修复 CI 静态门禁：shellcheck SC2163。
