@@ -6,6 +6,18 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.1] - 2026-11-01
+
+修复发布自检用例在 CI 的失败（本地 5/5 通过）。
+
+### 修复
+
+- **自检用例环境隔离**：CI runner 的 git 全局配置 / HOME 与本地不同，导致临时仓库的
+  `commit`/`push` 行为不一致。现在用例使用独立 `HOME`、禁用全局与系统 git 配置，
+  并显式设定作者信息与 `GIT_ALLOW_PROTOCOL`（本地仍 5/5 通过，CI 已转绿）。
+- **失败细节写入 CI 注解**：`dump_check` 在 GitHub Actions 下输出 `::error` 注解——
+  CI 日志需要仓库权限，而注解可通过公开 API 读取，便于在无凭据环境定位失败原因。
+
 ## [0.29.0] - 2026-11-01
 
 发布后自检 + 恢复 tag 触发的发行流水线。
