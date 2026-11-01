@@ -6,6 +6,17 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.14] - 2026-11-01
+
+向导连通性失败带出底层原因（DNS/路由/TLS 可区分）。
+
+### 修复
+
+- 向导的 Telegram 检查失败时，错误消息与日志里带上 `fetch` 的 `cause` 代码
+  （如 `ENOTFOUND` / `ETIMEDOUT` / `ECONNRESET` / 证书错误），不再只有一句
+  「fetch failed」。此前正是这句笼统信息导致排查方向被误判为 IPv6（实测服务器
+  `curl -6` 正常返回 302，IPv6 可用）。
+
 ## [0.29.13] - 2026-11-01
 
 修复「curl 能通、应用连不上」的 DNS/IPv6 问题。
