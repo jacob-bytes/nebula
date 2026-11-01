@@ -8,6 +8,7 @@
 # 用法：
 #   scripts/ops/backup.sh                     # 直接连本机数据库（读 .env）
 #   scripts/ops/backup.sh --compose           # 通过 docker compose exec 在 postgres 容器内导出
+#   scripts/ops/backup.sh --systemd           # 裸机 systemd 部署：先停服（SQLite 一致性），备份后自动拉起
 #   scripts/ops/backup.sh --out /mnt/backups --keep 14
 #
 # 产物（每个快照一个目录）：
@@ -20,6 +21,7 @@ set -Eeuo pipefail
 
 ROOT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd -P)
 MODE=local
+SYSTEMD=0
 OUT_DIR=""
 KEEP=7
 
@@ -34,6 +36,7 @@ usage() {
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --compose) MODE=compose; shift ;;
+    --systemd) SYSTEMD=1; shift ;;
     --out) OUT_DIR=${2:?--out 需要目录参数}; shift 2 ;;
     --keep) KEEP=${2:?--keep 需要整数}; shift 2 ;;
     -h|--help) usage 0 ;;
@@ -76,6 +79,22 @@ write_manifest() {
     printf 'sha256=%s\n' "$sum"
   } > "$SNAP/MANIFEST.txt"
 }
+
+# systemd 模式下先停服：SQLite 在运行中直接拷贝可能拿到半写状态；
+# PostgreSQL 也建议停写，避免 dump 与迁移交错。
+RESTART_AFTER=0
+if [[ "$SYSTEMD" == 1 ]]; then
+  command -v systemctl >/dev/null 2>&1 || die '--systemd 需要 systemctl（当前环境没有）'
+  svc=${NEBULA_SERVICE:-nebula.service}
+  if systemctl is-active --quiet "$svc" 2>/dev/null; then
+    log "停服 ${svc}（备份完成后自动拉起）"
+    systemctl stop "$svc"
+    RESTART_AFTER=1
+  else
+    log "服务 $svc 未运行，跳过停服"
+  fi
+  trap 'if [[ ${RESTART_AFTER:-0} == 1 ]]; then systemctl start "$svc" >/dev/null 2>&1 || log "警告：备份后未能自动启动 ${svc}，请人工检查"; fi' EXIT
+fi
 
 case "$DB_TYPE" in
   sqlite)

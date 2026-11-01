@@ -76,6 +76,27 @@ curl -fsSL https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/ins
 **轮换 / 泄露**：生成新密钥对 → 提交新公钥 → 覆盖 secret → 重发尚未被下载的版本；
 旧包签名无法用新公钥验证，需在 Release 说明里注明。
 
+## 备份与恢复
+
+面向运维的统一入口是 `scripts/ops/`：
+
+```bash
+# 裸机（systemd）：先停服保证 SQLite 一致性，备份后自动拉起
+scripts/ops/backup.sh --systemd --keep 7
+
+# Docker Compose：在容器内导出 PostgreSQL
+scripts/ops/backup.sh --compose --keep 7
+
+# 恢复（校验 MANIFEST 里的 sha256；非空库需 --force）
+scripts/ops/restore.sh backups/<时间戳> [--compose] [--force]
+
+# 备份/恢复链路自检
+scripts/ops/selftest.sh
+```
+
+`scripts/release/backup.sh` 是 **upgrade.sh 升级前调用的内部实现**，不作为面向运维的入口；
+两者语义不同（前者带 MANIFEST 与 sha256、支持 compose，后者依赖安装根与停服逻辑）。
+
 ## 可选依赖：ffmpeg
 
 视频封面（`<fileId>.video.webp`）由后端直接 `spawn ffmpeg` 抽帧生成：

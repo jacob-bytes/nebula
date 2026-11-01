@@ -6,6 +6,33 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.28.0] - 2026-11-01
+
+加固收尾：依赖告警处理与备份脚本入口收敛。
+
+### 依赖
+
+- **`js-yaml` 固定到 `^5.4.3`**（实际 5.5.0）：`@nestjs/swagger` 的传递依赖落在受影响区间，
+  用 `overrides` 修复；构建与全量测试通过。
+- **`glob` / `minimatch`（含 typeorm 传递）/ `typeorm` 评估后不修**：只存在于 dev 工具链与
+  迁移文件匹配，利用需攻击者控制 glob 模式（本项目模式均为内部常量）；强升会破坏
+  glob 7 / minimatch 3 的 API，typeorm 升 1.x 属破坏性变更。结论与依据写入
+  [docs/security.md](docs/security.md)。
+
+### 运维
+
+- `scripts/ops/backup.sh` 新增 `--systemd`：裸机部署时先停服（SQLite 一致性）、备份后
+  自动拉起；无 systemctl 的环境明确拒绝而不是静默降级。
+- 明确入口分工：面向运维统一用 `scripts/ops/{backup,restore,selftest}.sh`；
+  `scripts/release/backup.sh` 是 `upgrade.sh` 的内部实现（已在文件头注明）。
+  [docs/deployment.md](docs/deployment.md) 增加「备份与恢复」章节。
+
+### 验证
+
+- `npm audit --omit=dev`：js-yaml 已消失，剩余 3 条 moderate 为上述评估结论。
+- `--systemd` 在无 systemctl 环境明确报错；普通与 `--compose` 模式不受影响。
+- 后端 jest 1669、前端 vitest 409、构建通过。
+
 ## [0.27.0] - 2026-11-01
 
 加固：鉴权 fail-closed、文档默认关闭、进程兜底、向导限流。

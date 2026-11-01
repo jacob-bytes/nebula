@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+# 说明：本脚本是 **upgrade.sh 升级前内部调用的备份**（bare-metal / systemd 语义，
+# 依赖 common.sh 的安装根与停服逻辑）。面向运维的通用备份入口是
+# scripts/ops/backup.sh（支持 --systemd 与 --compose、带 MANIFEST 与 sha256 校验），
+# 恢复统一用 scripts/ops/restore.sh。
 set -Eeuo pipefail
 source "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)/common.sh"
 
