@@ -52,6 +52,30 @@ curl -fsSL https://raw.githubusercontent.com/jacob-bytes/nebula/main/scripts/ins
 - 可选环境变量：`NEBULA_REDIS_HOST/PORT`、`NEBULA_TELEGRAM_API_ID/HASH`（提供则启用内置
   Bot API）、`NEBULA_SMTP_*`（提供则启用邮件）。
 
+## 发行签名密钥（CI 发布用）
+
+正式发行包要求用私钥签名 `SHA256SUMS`，部署端的 `install.sh` / `upgrade.sh` / `validate-release.sh`
+用仓库内 `scripts/release/update-public-key.pem` 验签。
+
+一次性配置：
+
+1. 生成密钥对（或使用仓库内置的那一对，私钥在工作区 `.secrets/release-signing-key.pem`）：
+
+   ```bash
+   openssl genrsa -out release-signing-key.pem 3072
+   openssl rsa -in release-signing-key.pem -pubout -out scripts/release/update-public-key.pem
+   ```
+
+2. 把私钥内容整段（含 `-----BEGIN/END PRIVATE KEY-----`）存为仓库 secret **`RELEASE_SIGNING_KEY`**：
+   Settings → Secrets and variables → Actions → New repository secret。
+   GitHub 保存后不可再读，只能覆盖；配好跑一次 `Release` 工作流即可验证是否配对
+   （`sign-release.sh` 会用内置公钥自检）。
+
+3. 然后在 Actions → Release → Run workflow 勾选 `publish` 产出带制品的 Release。
+
+**轮换 / 泄露**：生成新密钥对 → 提交新公钥 → 覆盖 secret → 重发尚未被下载的版本；
+旧包签名无法用新公钥验证，需在 Release 说明里注明。
+
 ## 可选依赖：ffmpeg
 
 视频封面（`<fileId>.video.webp`）由后端直接 `spawn ffmpeg` 抽帧生成：
