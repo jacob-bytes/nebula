@@ -6,6 +6,16 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.2] - 2026-11-01
+
+发布流水线诊断增强（tag 上下文下回归测试仍失败）。
+
+### 变更
+
+- 回归测试步骤改为逐个执行并捕获输出，失败时写 `::error` check-run 注解：
+  CI 日志需要仓库权限，注解可通过公开 API 读取，便于在无凭据环境定位。
+  主分支上该门禁为绿，说明失败只在 tag 触发时复现（checkout 为 detached tag ref）。
+
 ## [0.29.1] - 2026-11-01
 
 修复发布自检用例在 CI 的失败（本地 5/5 通过）。
