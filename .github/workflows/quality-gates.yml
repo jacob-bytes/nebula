@@ -76,7 +76,20 @@ jobs:
         run: npm ci
 
       - name: Run shared backend quality gate
-        run: npm run check:ci
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          # 捕获输出：失败时把尾部写成 check-run 注解（CI 日志需仓库权限，注解可公开读）
+          out=''
+          if ! out=$(npm run check:ci 2>&1); then
+            printf '%s\n' "$out" >&2
+            while IFS= read -r line; do
+              [[ -n "$line" ]] || continue
+              printf '::error title=backend-gate::%s\n' "$line"
+            done < <(printf '%s\n' "$out" | tail -25)
+            exit 1
+          fi
+          printf '%s\n' "$out"
 
       - name: Smoke-test the complete forward migration chain on an empty database
         run: npm run migration:run
@@ -342,8 +355,14 @@ jobs:
           archive=".Releases/v${version}/nebula-v${version}-linux-x64.zip"
           [[ -f "$archive" ]] || { echo "发行包不存在：$archive" >&2; exit 1; }
           mapfile -t entries < <(zipinfo -1 "$archive")
+          # 纯 bash 匹配，不用 `printf | grep -q`：grep 命中即退出会让 printf 收到 SIGPIPE，
+          # 在 pipefail 下把整条管道判成失败（上一次发布就是被这个假失败卡住的）。
           for path in start.sh scripts/release/upgrade.sh backend/dist/main.js runtime/bin/node; do
-            if ! printf '%s\n' "${entries[@]}" | grep -q "\/${path}$"; then
+            found=0
+            for entry in "${entries[@]}"; do
+              if [[ "$entry" == *"/${path}" ]]; then found=1; break; fi
+            done
+            if [[ "$found" != 1 ]]; then
               echo "::error title=release-layout::发行包缺少安装脚本期望的路径：${path}" >&2
               exit 1
             fi
