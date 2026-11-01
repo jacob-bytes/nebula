@@ -1,9 +1,24 @@
+/* 首屏样式：只有一件事——在 JS 执行前给出正确的底色，避免白/黑闪烁。
+ *
+ * 这里不能写死深色：应用默认主题是浅色（main.ts 的 initTheme 顺序为
+ * localStorage → prefers-color-scheme → light）。原实现无条件设成 #0a0e17，
+ * 浅色用户会先看到一帧深色再变白。
+ *
+ * 局限：localStorage 里手动选过主题的用户无法在这里读到该值，
+ * 极端情况下仍会闪一帧——代价换来的是零阻塞脚本。 */
 html {
-  background-color: #0a0e17;
-  color-scheme: dark;
+  background-color: #ffffff;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  html {
+    background-color: #09090b;
+    color-scheme: dark;
+  }
 }
 
 body {
   margin: 0;
-  background-color: #0a0e17;
+  background-color: inherit;
 }

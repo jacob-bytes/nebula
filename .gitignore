@@ -98,3 +98,5 @@ beta/
 
 # 临时预览（UI 截图与本地试跑，不入库）
 .tmp-preview/
+# 生成的 data-migrator 构建产物（由 npm run build:data-migrator 重建）
+backend/dist-migrator/

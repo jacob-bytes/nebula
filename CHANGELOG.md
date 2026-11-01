@@ -6,6 +6,39 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.15.2] - 2026-11-01
+
+仓库精简：删掉未使用的 516KB 图标精灵与生成的构建产物。
+
+### 移除
+
+- `frontend/public/fonts/tdesign-icons-sprite.js`（516 KB，随 `public/` 原样拷进 dist）：
+  全仓零引用。通过 A/B 对照验证——带着它与删掉它渲染完全一致，
+  `t-icon` 的字符串名走运行时解析，与该精灵无关。JS 产物总量 2570 KB → 2094 KB。
+- `backend/dist-migrator/`（27 个文件，生成的编译产物）：仅由
+  `npm run build:data-migrator` 产出，运行时不引用；已加入 `.gitignore`。
+- `frontend/src/components/folder/FolderBreadcrumb.vue`：全仓零引用的死组件。
+- `telegram-bot-api/build.html`：上游的构建指令生成页，与运行无关。
+- 误提交的 `node_modules/.vite/vitest/.../results.json`（测试缓存）。
+
+### 修复
+
+- **首屏深色闪烁**：`public/critical.css` 无条件把底色设成 `#0a0e17`，
+  而应用默认主题是浅色（`initTheme`：localStorage → prefers-color-scheme → light），
+  浅色用户会先看到一帧深色再变白。改为浅色为默认 + `prefers-color-scheme: dark` 覆盖。
+- **分享页「在线预览」缺图标**：`t-icon name="browse"` 未解析出图标（与精灵无关，
+  A/B 已证明），改为内联 SVG，与项目其他图标写法一致。
+
+### 说明
+
+- `telegram-bot-api/td/`（1661 文件 / 32 MB）保留：它是该 fork 的核心价值（流式端点），
+  且在 `.dockerignore` 中已排除，不影响应用镜像体积。
+
+### 验证
+
+- `vue-tsc` / `vite build` / `check:bundle` 通过；vitest 392 项通过。
+- 图标渲染与首屏底色经截图 A/B 对照确认。
+
 ## [0.15.1] - 2026-11-01
 
 README 重写：补齐从零部署路径。

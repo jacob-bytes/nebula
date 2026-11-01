@@ -39,7 +39,12 @@
           <span>{{ downloading ? '下载中...' : '下载文件' }}</span>
         </button>
         <button v-if="previewKind" type="button" class="preview-btn" @click="openPreview">
-          <t-icon name="browse" />
+          <!-- 内联 SVG：TDesign 的 t-icon 字符串名在运行时解析，browse 未能解析出图标，
+               与图标精灵是否存在无关（做过 A/B 对照）。内联可保证渲染。 -->
+          <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M2 10s3-6 8-6 8 6 8 6-3 6-8 6-8-6-8-6z"/>
+            <circle cx="10" cy="10" r="2.5"/>
+          </svg>
           <span>在线预览</span>
         </button>
       </div>
