@@ -6,6 +6,17 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.18.1] - 2026-11-01
+
+修复 CI 静态门禁：shellcheck SC2163。
+
+### 修复
+
+- `scripts/ops/{backup,restore}.sh` 里从 `.env` 导出变量的写法 `export "$line"` 触发
+  shellcheck SC2163（"This does not export 'line'"）。改为 `export "${line?}"`——
+  展开后仍是合法的 `KEY=VALUE` 赋值，同时消除告警。
+  该告警来自 `--severity=warning` 门禁，会把整条 Release scripts 作业判失败。
+
 ## [0.18.0] - 2026-11-01
 
 浏览器 E2E 与 OpenAPI 自动生成。

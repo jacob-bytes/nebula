@@ -49,7 +49,8 @@ if [[ -f "$ROOT_DIR/.env" ]]; then
     [[ "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
     key=${line%%=*}
     [[ -n "${!key:-}" ]] && continue
-    export "$line"
+    # KEY=VALUE 作为 export 的参数是合法赋值；加 ${var?} 只是为了让 shellcheck 安分
+    export "${line?}"
   done < "$ROOT_DIR/.env"
 fi
 
