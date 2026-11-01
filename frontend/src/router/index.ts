@@ -5,6 +5,7 @@ import { useMediaPlaybackStore } from '../stores/mediaPlayback';
 import { clearThumbToken } from '../utils/thumbnail';
 import { clearThumbnailCache } from '../utils/thumbnailCache';
 import { PAGE_ROLES, hasAnyRole } from '../utils/permissions';
+import { api } from '../stores/auth';
 
 /** 是否处于分享授权域路由（/s/:token） */
 function isShareRoute(route: RouteLocationNormalized): boolean {
@@ -183,6 +184,31 @@ let navLock: Promise<void> = Promise.resolve();
  */
 const FETCH_USER_TIMEOUT = 8000;
 
+/**
+ * 首次运行向导探测（缓存）。
+ *
+ * 未初始化的实例访问 `/` 时应引导到 `/setup`，而不是 `/login`——此时根本没有账号，
+ * 让用户去登录页只会困惑。该探测只做一次并缓存，失败按"已初始化"处理（不阻塞导航）。
+ */
+let setupProbe: Promise<boolean> | null = null;
+
+async function isSetupPending(): Promise<boolean> {
+  if (!setupProbe) {
+    setupProbe = (async () => {
+      try {
+        const response = await api.get('/setup/status', { timeout: 5000 });
+        const status = response.data?.data as { available?: boolean; initialized?: boolean } | undefined;
+        return status?.available === true && status?.initialized === false;
+      } catch {
+        return false;
+      }
+    })();
+    // 探测失败不缓存"false"的失败态：下次导航可重试
+    setupProbe.catch(() => { setupProbe = null; });
+  }
+  return setupProbe;
+}
+
 router.beforeEach(async (to, _from, next) => {
   // 步骤 0：公开路由（分享页 /s/:token）直接放行，不进入导航队列、不触发 fetchUser。
   // 这是匿名访问场景：不应被重定向，也不应因慢会话恢复排队而阻塞分享页打开。
@@ -227,6 +253,14 @@ router.beforeEach(async (to, _from, next) => {
       }
       next('/login');
       return;
+    }
+
+    // 步骤 2.5：未初始化且要进受保护页面 → 引导到首次运行向导（而不是登录页）
+    if (!isAuthenticated && to.name !== 'Setup' && to.meta.requiresAuth) {
+      if (await isSetupPending()) {
+        next({ name: 'Setup' });
+        return;
+      }
     }
 
     // 步骤 3：需要认证但未登录 → 跳转登录页

@@ -194,8 +194,16 @@ export class SetupService {
     if (!/^\d+:[\w-]+$/.test(input.telegramBotToken)) {
       throw new BadRequestException('Bot Token 格式应为 <bot_id>:<token>');
     }
-    if (!input.telegramChatId.trim()) {
+    const chatId = input.telegramChatId.trim();
+    if (!chatId) {
       throw new BadRequestException('Telegram 存储 Chat ID 不能为空');
+    }
+    // 群/频道 ID 为负数；超级群与频道以 -100 开头。填成正数是最常见的配置错误，
+    // 而且要到真正上传时才失败，这里提前拦截。
+    if (!/^-\d+$/.test(chatId)) {
+      throw new BadRequestException(
+        `Chat ID 应为负数（群/频道），例如 -1001234567890；当前填写：${chatId}`,
+      );
     }
     if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(input.adminEmail)) {
       throw new BadRequestException('管理员邮箱格式不正确');

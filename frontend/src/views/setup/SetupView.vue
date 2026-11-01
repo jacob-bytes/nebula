@@ -68,7 +68,7 @@
           <label class="field">
             <span class="field-label">存储 Chat ID</span>
             <t-input v-model="form.telegramChatId" placeholder="-1001234567890" autocomplete="off" />
-            <span class="field-hint">把 Bot 拉进一个私有群/频道，授予发言权限后获取该 ID。</span>
+            <span class="field-hint">把 Bot 拉进一个私有群/频道，授予发言权限后获取该 ID；格式为负数，超级群/频道以 <code>-100</code> 开头（如 <code>-1001234567890</code>）。</span>
           </label>
           <div class="setup-test">
             <t-button theme="default" variant="outline" :loading="testing" @click="testTelegram">
@@ -144,7 +144,10 @@ const resultDesc = computed(() => (state.value === 'done'
 const canAdvance = computed(() => {
   if (!form.setupToken.trim()) return false;
   if (step.value === 0) return form.appUrl.trim().length > 0;
-  if (step.value === 1) return /^\d+:[\w-]+$/.test(form.telegramBotToken.trim()) && form.telegramChatId.trim().length > 0;
+  if (step.value === 1) {
+    return /^\d+:[\w-]+$/.test(form.telegramBotToken.trim())
+      && /^-\d+$/.test(form.telegramChatId.trim());
+  }
   return form.adminEmail.includes('@') && form.adminPassword.length >= 8;
 });
 
