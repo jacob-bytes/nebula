@@ -6,6 +6,25 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.5] - 2026-11-01
+
+修复一键安装在真实环境首次部署失败（`start.sh` 路径假设错误）。
+
+### 修复
+
+- **`install.sh` 找错 `start.sh` 路径**：发行包布局是「`start.sh` 在包根，运维脚本在
+  `scripts/release/` 下」，而安装脚本检查并执行的是 `scripts/release/start.sh`，
+  真实环境首装直接报 `发行包缺少关键文件：scripts/release/start.sh`。
+  现已改为包根路径，并把 `scripts/release/upgrade.sh` 一并纳入必需文件校验。
+  已下载 v0.29.4 产物核对：`nebula-v0.29.4-linux-x64/start.sh` 与
+  `.../scripts/release/upgrade.sh` 均存在，确认是脚本侧的错误假设。
+
+### 防回归
+
+- **CI 新增「校验安装脚本期望的路径存在于发行包」**：构建出真实 ZIP 后逐项断言
+  `start.sh`、`scripts/release/upgrade.sh`、`backend/dist/main.js`、`runtime/bin/node`
+  存在，缺失即 `::error` 注解并失败。这类「脚本假设 vs 产物布局」的漂移只能靠真实产物校验。
+
 ## [0.29.4] - 2026-11-01
 
 修复 tag 流水线的两处失败，使发行包能自动产出。

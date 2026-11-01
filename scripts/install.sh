@@ -86,7 +86,7 @@ if [[ "$DRY_RUN" == 1 ]]; then
   验签        ：$([[ "$SKIP_VERIFY" == 1 ]] && echo '跳过（--insecure-skip-verify）' || echo '强制：SHA256SUMS.sig + 内置公钥')
   配置模式    ：$([[ "$DEFER_CONFIG" == 1 ]] && echo '向导（安装零提问，首次访问 /setup 配置）' || { [[ "$NONINTERACTIVE" == 1 ]] && echo '非交互（NEBULA_* 环境变量）' || echo '交互式（逐项提问）'; })
   目标路径    ：$ROOT/releases/<版本> + $ROOT/current 符号链接
-  随后执行    ：$ROOT/current/scripts/release/start.sh$([[ "$DEFER_CONFIG" == 1 ]] && echo ' --setup' || { [[ "$NONINTERACTIVE" == 1 ]] && echo ' --yes' || echo ''; })
+  随后执行    ：$ROOT/current/start.sh$([[ "$DEFER_CONFIG" == 1 ]] && echo ' --setup' || { [[ "$NONINTERACTIVE" == 1 ]] && echo ' --yes' || echo ''; })
   不会做      ：安装 PostgreSQL/Redis、配置反向代理或证书
 EOF
   exit 0
@@ -188,7 +188,8 @@ TOP=${tops[0]}
 PKG_VERSION=$(tr -d '\r\n' < "$TOP/VERSION")
 [[ "$PKG_VERSION" == "$VERSION" ]] || die "发行包内版本($PKG_VERSION) 与请求版本($VERSION) 不一致"
 
-for required in backend/dist/main.js runtime/bin/node scripts/release/start.sh; do
+# 发行包布局：start.sh 在包根，运维脚本在 scripts/release/ 下（upgrade/rollback/common 等）
+for required in backend/dist/main.js runtime/bin/node start.sh scripts/release/upgrade.sh; do
   [[ -e "$TOP/$required" ]] || die "发行包缺少关键文件：$required"
 done
 
@@ -203,7 +204,7 @@ mv -Tf "$ROOT/.current.new" "$ROOT/current"
 log "current → releases/$VERSION"
 
 # ---- 交给发行包内的首次部署脚本 -------------------------------------------
-START="$ROOT/current/scripts/release/start.sh"
+START="$ROOT/current/start.sh"
 if [[ "$DEFER_CONFIG" == 1 ]]; then
   log '进入向导模式（start.sh --setup）：安装阶段不收集配置'
   bash "$START" --setup

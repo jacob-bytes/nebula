@@ -331,6 +331,25 @@ jobs:
             "$version" "$release_dir/release-manifest.json"
           zipinfo -1 "$archive" | grep -Fqx "nebula-v${version}-linux-x64/VERSION"
 
+      # 安装脚本（scripts/install.sh）按固定路径找发行包内容：曾经因为把 start.sh 写成
+      # scripts/release/start.sh 而导致真实环境首次安装失败（包内 start.sh 在根目录）。
+      # 这里用真实产物校验安装脚本期望的路径，避免两边再次漂移。
+      - name: 校验安装脚本期望的路径存在于发行包
+        shell: bash
+        run: |
+          set -Eeuo pipefail
+          version="$(tr -d '\r\n' < VERSION)"
+          archive=".Releases/v${version}/nebula-v${version}-linux-x64.zip"
+          [[ -f "$archive" ]] || { echo "发行包不存在：$archive" >&2; exit 1; }
+          mapfile -t entries < <(zipinfo -1 "$archive")
+          for path in start.sh scripts/release/upgrade.sh backend/dist/main.js runtime/bin/node; do
+            if ! printf '%s\n' "${entries[@]}" | grep -q "\/${path}$"; then
+              echo "::error title=release-layout::发行包缺少安装脚本期望的路径：${path}" >&2
+              exit 1
+            fi
+          done
+          echo '安装脚本期望的路径全部存在于发行包'
+
   telegram-bot-api:
     name: C++ / GCC / CMake / CTest
     runs-on: ubuntu-24.04
