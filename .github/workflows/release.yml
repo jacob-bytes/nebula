@@ -115,12 +115,27 @@ jobs:
           for asset in "${assets[@]}"; do
             [[ -s "$asset" ]] || { echo "缺少发行资产：$asset" >&2; exit 1; }
           done
-          # 非 draft、非 prerelease 的稳定 Release；--verify-tag 确保基于已推送的 tag。
-          gh release create "$tag" "${assets[@]}" \
-            --title "NEBULA v${version}" \
-            --notes-file "$release_dir/RELEASE.txt" \
-            --verify-tag \
-            --latest
+          # 幂等发布：
+          #   release-notes.yml 会在 tag 推送时先建一个「只有说明」的 Release，
+          #   这里如果直接 create 会因同名失败（实测：a release with the same tag name
+          #   already exists）。因此先探测，存在则补传资产并更新说明，不存在才创建。
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "Release ${tag} 已存在（可能由 release-notes 工作流创建），补传资产并更新说明。"
+            gh release upload "$tag" "${assets[@]}" --clobber
+            gh release edit "$tag" \
+              --title "NEBULA v${version}" \
+              --notes-file "$release_dir/RELEASE.txt"
+            # --latest 在较旧的 gh 上不存在；单独执行并容错，避免因此让整个发布失败
+            gh release edit "$tag" --latest \
+              || echo "警告：无法自动标记 latest（gh 版本较旧），请在 Release 页面手动设置。" >&2
+          else
+            # 非 draft、非 prerelease 的稳定 Release；--verify-tag 确保基于已推送的 tag。
+            gh release create "$tag" "${assets[@]}" \
+              --title "NEBULA v${version}" \
+              --notes-file "$release_dir/RELEASE.txt" \
+              --verify-tag \
+              --latest
+          fi
 
       - name: Remove signing key
         if: ${{ always() }}

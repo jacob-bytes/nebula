@@ -6,6 +6,25 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.15.6] - 2026-11-01
+
+修复发布流水线与 release-notes 工作流的同名冲突。
+
+### 修复
+
+- **`Release` 工作流发布步骤改为幂等**：`release-notes.yml` 会在 tag 推送时先建一个
+  「只有说明」的 Release，而 `release.yml` 用 `gh release create`，同名时直接失败
+  （实测：`a release with the same tag name already exists: v0.15.5`）。
+  现在先 `gh release view` 探测：已存在则 `upload --clobber` 补传资产并 `edit` 更新说明，
+  不存在才创建。
+- `gh release edit --latest` 单独执行并容错：该参数在较旧 gh 上不存在，
+  不应因此让整个发布失败。
+
+### 说明
+
+- 该次失败发生在**签名与发行包校验都通过之后**的发布步骤，说明签名密钥与
+  `docs/release-notes` → `CHANGELOG` 的发行说明来源均已生效。
+
 ## [0.15.5] - 2026-11-01
 
 配置发行签名链路：替换为自有密钥对，并补操作文档。
