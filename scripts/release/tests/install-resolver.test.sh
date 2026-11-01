@@ -14,6 +14,21 @@ ok() { printf 'ok   %s\n' "$*"; PASSED=$((PASSED + 1)); }
 WORK=$(mktemp -d "${TMPDIR:-/tmp}/nebula-resolver.XXXXXX")
 trap 'rm -rf "$WORK"' EXIT
 
+# 静态顺序检查：bash 是顺序执行的（curl | bash 更是），函数必须在调用点之前定义。
+# 曾经因为把 resolve_version_with_asset 插到了 fetch() 之前、却在版本解析处调用，
+# 真实环境报 `resolve_version_with_asset: command not found`。
+for fn in resolve_version_with_asset fetch; do
+  def_line=$(grep -n "^${fn}()" "$INSTALL" | head -1 | cut -d: -f1)
+  # 排除定义行与注释行，剩下的第一处出现即视为调用点
+  call_line=$(grep -n "$fn" "$INSTALL" | grep -vE ":[[:space:]]*#|:${fn}\(\)" | head -1 | cut -d: -f1)
+  [[ -n "$def_line" ]] || die "install.sh 缺少函数 $fn"
+  [[ -n "$call_line" ]] || die "install.sh 未调用 $fn（用例失去意义）"
+  if (( def_line > call_line )); then
+    die "$fn 定义在第 ${def_line} 行，却在第 ${call_line} 行被调用（bash 顺序执行）"
+  fi
+  ok "$fn 定义（第 ${def_line} 行）早于首次调用（第 ${call_line} 行）"
+done
+
 # 取出解析函数（失败即视为脚本结构变化，用例本身要挂）
 sed -n '/^resolve_version_with_asset()/,/^}/p' "$INSTALL" > "$WORK/fn.sh"
 grep -q 'resolve_version_with_asset' "$WORK/fn.sh" || die 'install.sh 中找不到 resolve_version_with_asset'

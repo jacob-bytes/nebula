@@ -28,6 +28,28 @@ FORCE=0
 log() { printf '[install] %s\n' "$*" >&2; }
 die() { printf '[install] 错误：%s\n' "$*" >&2; exit 1; }
 
+# 取「确实带发行包」的最新版本。
+#
+# GitHub 的 releases/latest 会把「只有发版说明」的 Release 也算作最新——我们的流水线里
+# Release notes 建说明、Release 构建产物，两者有时间差，直接取 latest 会 404。
+# 这里按时间倒序遍历 Release，逐个用 HEAD 探测 zip 是否存在，命中即返回。
+resolve_version_with_asset() {
+  local tags v
+  tags=$(curl -fsSL --max-time 30 "https://api.github.com/repos/$REPO/releases?per_page=30" 2>/dev/null \
+    | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v?[0-9]+\.[0-9]+\.[0-9]+"' \
+    | sed -E 's/.*"v?([0-9]+\.[0-9]+\.[0-9]+)"$/\1/')
+  [[ -n "$tags" ]] || return 1
+  for v in $tags; do
+    if curl -fsIL --max-time 25 -o /dev/null \
+      "https://github.com/$REPO/releases/download/v$v/nebula-v$v-linux-x64.zip" 2>/dev/null; then
+      printf '%s' "$v"
+      return 0
+    fi
+  done
+  return 1
+}
+
+
 usage() {
   cat <<'EOF'
 用法：install.sh [选项]
@@ -135,27 +157,6 @@ fi
 ZIP="$WORK/nebula-v$VERSION-linux-x64.zip"
 SUMS="$WORK/SHA256SUMS"
 SIG="$WORK/SHA256SUMS.sig"
-
-# 取「确实带发行包」的最新版本。
-#
-# GitHub 的 releases/latest 会把「只有发版说明」的 Release 也算作最新——我们的流水线里
-# Release notes 建说明、Release 构建产物，两者有时间差，直接取 latest 会 404。
-# 这里按时间倒序遍历 Release，逐个用 HEAD 探测 zip 是否存在，命中即返回。
-resolve_version_with_asset() {
-  local tags v
-  tags=$(curl -fsSL --max-time 30 "https://api.github.com/repos/$REPO/releases?per_page=30" 2>/dev/null \
-    | grep -oE '"tag_name"[[:space:]]*:[[:space:]]*"v?[0-9]+\.[0-9]+\.[0-9]+"' \
-    | sed -E 's/.*"v?([0-9]+\.[0-9]+\.[0-9]+)"$/\1/')
-  [[ -n "$tags" ]] || return 1
-  for v in $tags; do
-    if curl -fsIL --max-time 25 -o /dev/null \
-      "https://github.com/$REPO/releases/download/v$v/nebula-v$v-linux-x64.zip" 2>/dev/null; then
-      printf '%s' "$v"
-      return 0
-    fi
-  done
-  return 1
-}
 
 fetch() { # url dest
   log "下载 $(basename "$2")"

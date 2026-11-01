@@ -6,6 +6,22 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.7] - 2026-11-01
+
+修复安装脚本函数定义顺序错误（`command not found`）。
+
+### 修复
+
+- **`resolve_version_with_asset: command not found`**：上一版把函数定义插在了 `fetch()`
+  之前、却在更靠前的版本解析处调用。bash 顺序执行（`curl | bash` 更是逐行读入），
+  调用时函数还不存在。现已把定义移到 `die()` 之后、任何调用点之前。
+
+### 测试
+
+- `install-resolver.test.sh` 新增静态守卫：**函数定义行号必须小于首次调用行号**，
+  并排除定义行与注释行。这类"顺序"错误 `bash -n` 查不出来，只有真正执行才会暴露。
+- 另用桩 `uname`/`id`/`curl` 走了一遍**真实执行路径**：解析跳过无产物版本、进入下载阶段（4/4 + 模拟通过）。
+
 ## [0.29.6] - 2026-11-01
 
 修复一键安装取到「尚未构建产物」的版本（下载 404）。
