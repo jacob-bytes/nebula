@@ -6,6 +6,31 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.21.1] - 2026-11-01
+
+导航与面包屑合并为单一事实来源；修复侧栏折叠后图表不 reflow。
+
+### 重构
+
+- **新增 `config/nav.ts`**：区块标题、导航条目、图标、权限（取自 `PAGE_ROLES`）集中一处。
+  - 侧栏改为遍历 `NAV_SECTIONS` 渲染（区块标题也来自配置，不再写死「工作区 / 管理后台」）；
+  - 面包屑由 `NAV_SECTIONS` **派生**（`BREADCRUMB_MAP`），侧栏之外的页面
+    （`/admin`、`/admin/dashboard-customizer`）在 `EXTRA_CRUMBS` 补充。
+  - 改名只需改 `nav.ts` 一处，不会再出现「侧栏叫 A、面包屑叫 B」。
+- 新增 `config/nav.spec.ts` 六条不变量：权限必须来自 `PAGE_ROLES`、面包屑标签必须等于侧栏标签、
+  管理页第一级必须可点回 `/admin`、工作区区块不可点击、`PAGE_ROLES` 全覆盖、导航路径不重复。
+
+### 修复
+
+- **图表不随容器宽度 reflow**：仪表盘趋势图此前只监听 `window.resize`，折叠/展开侧栏不会触发，
+  右轴会溢出卡片。改为 `ResizeObserver` 观察容器（图表节点是 `v-if`，在 `watch(flush:'post')`
+  里挂载并在清理时断开）。
+
+### 验证
+
+- 前端 vitest 403 通过（新增 6 条导航不变量）；`vue-tsc` / 构建 / 体积门禁通过。
+- 截图复核：侧栏展开（区块标题与图标不变）、折叠态、折叠后图表宽度收回卡片内。
+
 ## [0.21.0] - 2026-11-01
 
 顶栏重构：面包屑 + 折叠按钮归位 + 账号区右上移。

@@ -346,6 +346,29 @@ function handleResize() {
   trendChart?.resize();
 }
 
+/**
+ * 容器尺寸变化不会触发 window.resize：折叠/展开侧栏、进入设计规范等场景下
+ * 图表仍按旧宽度绘制，右轴会溢出卡片。用 ResizeObserver 跟随容器实际尺寸。
+ * 图表节点是 v-if 渲染的，因此要等 ref 出现后再挂观察。
+ */
+let chartResizeObserver: ResizeObserver | null = null;
+
+watch(trendChartRef, (el, _, onCleanup) => {
+  chartResizeObserver?.disconnect();
+  chartResizeObserver = null;
+  if (!el || typeof ResizeObserver === 'undefined') return;
+  chartResizeObserver = new ResizeObserver(() => {
+    // 折零尺寸（切换视图瞬间）时 resize 会报错，跳过即可
+    if (el.clientWidth === 0) return;
+    trendChart?.resize();
+  });
+  chartResizeObserver.observe(el);
+  onCleanup(() => {
+    chartResizeObserver?.disconnect();
+    chartResizeObserver = null;
+  });
+}, { flush: 'post' });
+
 watch(() => stats.value, () => {
   // 数值滚动由 useCountUp 处理，这里只在趋势数据变化后重绘
 });
@@ -369,6 +392,8 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  chartResizeObserver?.disconnect();
+  chartResizeObserver = null;
   if (dayRefreshTimer) {
     clearInterval(dayRefreshTimer);
     dayRefreshTimer = null;
