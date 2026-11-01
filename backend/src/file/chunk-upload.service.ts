@@ -287,6 +287,9 @@ export class ChunkUploadService implements OnModuleInit {
     folderId?: string | null,
     overwriteFileId?: string | null,
   ): Promise<{ uploadId: string }> {
+    // 分片上传同样只支持 Telegram 语义（直传 + 合并后由 processing 流水线接管）；
+    // 配置 S3 时直接拒绝，避免「分片写 Telegram、读走 S3」的错位数据。
+    this.fileService.assertStorageProviderSupportsProgressiveUpload();
     // 文件大小上限校验：结合动态 MAX_FILE_SIZE，防止绕过限制写满磁盘（DoS）
     const maxFileSize = await this.fileService.getMaxFileSize();
     if (!Number.isFinite(fileSize) || fileSize <= 0) {

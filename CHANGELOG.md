@@ -6,6 +6,30 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.20.1] - 2026-11-01
+
+S3 配置下拒绝异步 / 分片上传（数据错位防护）。
+
+### 修复
+
+- **`FILE_STORAGE_PROVIDER=s3` 时异步 / 分片上传 fail-fast**：这两条链路的进度、续传与
+  清理都建立在 Telegram 的 message/file_id 语义上，对象存储路径尚未实现。此前会静默
+  落库为 Telegram 文件，而读路径按 `storageProvider` 分派到 S3 → 下载 404。
+  现在同步上传接口与分片会话初始化都会返回 400：`S3 暂不支持异步/分片上传，请改用同步上传接口`。
+
+### 说明
+
+- **S3 写路径的完整覆盖（异步 / 分片上传 + 缩略图 + 对象引用计数删除）尚未实现**，
+  本轮只消除了「配置与实现不一致时的静默错位」。后续落地要点：
+  1. 上传处理器按 provider 分派到 `StorageService.putObject`，替代 Telegram 上传；
+  2. 缩略图生成对 S3 文件走 `openUpstreamStream`，避免依赖 Telegram file_path；
+  3. 删除路径按 `storageKey` 引用计数（去重会产生多行共享同一对象），计数归零才删对象。
+
+### 验证
+
+- `FILE_STORAGE_PROVIDER=s3` 启动后实测：`POST /api/files/upload-async` 返回 400 与上述文案。
+- 后端 jest 1627 通过（含新增 mock 适配）；分片与覆盖上传相关 spec 全过。
+
 ## [0.20.0] - 2026-11-01
 
 分享卡封面按文件类型区分。

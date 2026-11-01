@@ -14,6 +14,8 @@ const MB = 1024 * 1024;
 describe('ChunkUploadService session quota', () => {
   const userId = 'user-1';
   const fileService = {
+    assertStorageProviderSupportsProgressiveUpload: jest.fn(),
+    // 分片上传的存储后端守卫：默认放行（S3 拒绝场景由 file.service 的用例覆盖）
     getMaxFileSize: jest.fn().mockResolvedValue(100 * MB),
     assertOverwriteTarget: jest.fn().mockResolvedValue(undefined),
     getFileSampleFromPath: jest.fn(),
@@ -502,6 +504,8 @@ describe('ChunkUploadService session quota', () => {
 describe('ChunkUploadService 空闲会话回收', () => {
   const userId = 'user-reclaim';
   const fileService = {
+    // 分片上传的存储后端守卫（默认 Telegram，放行）
+    assertStorageProviderSupportsProgressiveUpload: jest.fn(),
     getMaxFileSize: jest.fn().mockResolvedValue(100 * MB),
     assertOverwriteTarget: jest.fn().mockResolvedValue(undefined),
     softDeleteProcessingFile: jest.fn().mockResolvedValue(undefined),

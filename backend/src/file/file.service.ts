@@ -1084,6 +1084,23 @@ export class FileService implements OnModuleInit {
     return 's3';
   }
 
+  /**
+   * 异步 / 分片上传的存储后端守卫。
+   *
+   * 这两种上传的进度、续传与清理都建立在 Telegram 的 message/file_id 语义上，
+   * 对象存储路径尚未实现。配置 S3 时直接拒绝，避免「写进 Telegram、读走 S3」的错位。
+   */
+  assertStorageProviderSupportsProgressiveUpload(): void {
+    const configured = (this.configService.get<string>('FILE_STORAGE_PROVIDER') ?? 'telegram')
+      .trim()
+      .toLowerCase();
+    if (configured === 's3') {
+      throw new BadRequestException(
+        'FILE_STORAGE_PROVIDER=s3 暂不支持异步 / 分片上传，请改用同步上传接口',
+      );
+    }
+  }
+
   /** 对象 key：按日期分桶 + uuid 前缀，避免同目录重名与热分区。 */
   private buildObjectKey(name: string): string {
     const datePrefix = new Date().toISOString().slice(0, 10).replace(/-/g, '/');
@@ -3119,6 +3136,12 @@ export class FileService implements OnModuleInit {
     folderId?: string | null,
     overwriteFileId?: string,
   ): Promise<{ jobId: string; warning: string }> {
+    // 存储后端前置校验：异步上传的实现完全依赖 Telegram（队列任务、上报进度、
+    // 分片续传都以 message/file_id 为前提）。配置了 S3 却走异步上传时，
+    // 若静默落库为 Telegram 文件，读路径会按 storageProvider 分派到 S3 而 404。
+    // 因此在这里 fail-fast，而不是让数据错位到事后才发现。
+    this.assertStorageProviderSupportsProgressiveUpload();
+
     if (file.size > this.uploadConfig.maxFileSizeBytes) {
       throw new BadRequestException(`文件大小不能超过 ${this.uploadConfig.maxFileSizeBytes / 1024 / 1024}MB`);
     }

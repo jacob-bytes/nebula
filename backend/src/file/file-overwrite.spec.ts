@@ -666,10 +666,16 @@ describe('InitChunkUploadDto - overwriteFileId 校验', () => {
 
 describe('ChunkUploadService - init 覆盖目标预校验', () => {
   let service: ChunkUploadService;
-  let fileServiceMock: { getMaxFileSize: jest.Mock; assertOverwriteTarget: jest.Mock };
+  let fileServiceMock: {
+    getMaxFileSize: jest.Mock;
+    assertOverwriteTarget: jest.Mock;
+    assertStorageProviderSupportsProgressiveUpload: jest.Mock;
+  };
 
   beforeEach(async () => {
     fileServiceMock = {
+      // 存储后端守卫：默认 Telegram，放行
+      assertStorageProviderSupportsProgressiveUpload: jest.fn(),
       getMaxFileSize: jest.fn().mockResolvedValue(50 * 1024 * 1024 * 1024),
       assertOverwriteTarget: jest.fn().mockResolvedValue(makeTargetFile()),
     };
