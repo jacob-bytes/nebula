@@ -1,3 +1,4 @@
+import { Public } from '../common/decorators/public.decorator';
 import { Controller, Get, HttpException, HttpStatus, Inject, Logger, NotFoundException, Optional, Param, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Request, Response } from 'express';
@@ -56,6 +57,7 @@ const MIME_PATTERN = /^[a-z0-9][a-z0-9!#$&^_.+-]{0,63}\/[a-z0-9][a-z0-9!#$&^_.+-
  * 统计语义：仅当 pipeline 真正把响应完整写完才计入 `accessCount` 与成功审计；
  * 传输中断 / 上游失败只记失败审计，并由访问日志的传输结果字段区分。
  */
+@Public()
 @Controller('bot-dl')
 export class TelegramBotPublicController {
   private readonly logger = new Logger(TelegramBotPublicController.name);

@@ -22,6 +22,8 @@ import { AlertModule } from './alert/alert.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { SecurityModule } from './security/security.module';
 import { SetupModule } from './setup/setup.module';
+import { APP_GUARD } from '@nestjs/core';
+import { GuardRequirementGuard } from './common/guards/guard-requirement.guard';
 import { TagModule } from './tag/tag.module';
 import { PublicConfigModule } from './public-config/public-config.module';
 import { HealthModule } from './health/health.module';
@@ -71,6 +73,11 @@ import { TelegramMirrorModule } from './telegram-mirror/telegram-mirror.module';
     // 账号池后台管理（账号 CRUD、凭据加密托管、三层开关）与镜像规则/任务
     TelegramAccountsModule,
     TelegramMirrorModule,
+  ],
+  providers: [
+    // 全局 fail-closed：路由必须自带鉴权守卫或显式 @Public()，否则拒绝。
+    // 不改变既有路由行为（它们都带守卫），只拦住"新增控制器忘记加锁"。
+    { provide: APP_GUARD, useClass: GuardRequirementGuard },
   ],
 })
 export class AppModule {}

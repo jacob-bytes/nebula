@@ -7,6 +7,9 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
  * 为什么做这件事：`docs/API.md` 是手写的，接口一改就漂移。这里让文档从
  * 路由与 DTO 直接生成，至少保证「路径 / 方法 / 参数」与代码一致。
  *
+ * 默认**关闭**：文档会暴露全部路由与参数结构，生产环境属于信息泄露。
+ * 需要时显式 OPENAPI_ENABLED=true 开启（本地开发/自建文档站）。
+ *
  * 挂载点：
  *   - GET /api/docs       Swagger UI（交互式）
  *   - GET /api/docs-json  原始 JSON（可被 `docs/openapi.json` 快照比对）
@@ -15,9 +18,10 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
  * 若部署环境不希望公开，可用 OPENAPI_ENABLED=false 关闭。
  */
 export function setupOpenApi(app: INestApplication): void {
-  const enabled = (process.env.OPENAPI_ENABLED ?? 'true').toLowerCase() !== 'false';
+  // 默认关闭：宁可默认安全，也不要默认暴露路由结构
+  const enabled = (process.env.OPENAPI_ENABLED ?? 'false').toLowerCase() === 'true';
   if (!enabled) {
-    new Logger('OpenApi').log('OPENAPI_ENABLED=false，跳过文档挂载');
+    new Logger('OpenApi').log('OpenAPI 文档未启用（如需开启：OPENAPI_ENABLED=true）');
     return;
   }
 

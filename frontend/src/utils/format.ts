@@ -37,7 +37,7 @@ export function formatDate(date: string): string {
 /**
  * 格式化为相对时间（刚刚 / N 分钟前 / N 小时前 / N 天前），
  * 超出一年降级为 formatDate；非法日期返回 '-'。
- * 供 FileCard / FolderCard 复用，避免重复实现。
+ * 供文件卡片类组件复用，避免重复实现。
  */
 export function formatRelativeDate(dateStr: string): string {
   if (!dateStr) return '-';

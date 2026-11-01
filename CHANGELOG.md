@@ -6,6 +6,41 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.27.0] - 2026-11-01
+
+加固：鉴权 fail-closed、文档默认关闭、进程兜底、向导限流。
+
+### 安全
+
+- **全局 fail-closed 守卫**（`GuardRequirementGuard`）：此前鉴权完全依赖开发者给每个控制器
+  手写 `@UseGuards(...)`，漏写即等于公开接口且无任何提示。现在路由必须「自带守卫」或
+  「显式 `@Public()`」，否则一律 403 并记录错误日志。**不改变既有路由行为**（都带守卫），
+  只拦住新增控制器忘记加锁。已为 4 个整类公开的控制器（health / public-config / setup /
+  bot-dl）与 18 个公开方法（auth 的注册登录等、share 的 `/s/:token` 系列）补 `@Public()`。
+- **`/api/docs` 改为默认关闭**（`OPENAPI_ENABLED=false`）：文档会暴露 174 条路由与参数结构，
+  属于信息泄露；需要时显式开启。
+- **向导接口按 IP 限流**：`/api/setup/test-telegram` 与 `/api/setup/complete` 10 次 / 5 分钟，
+  触发后锁定 5 分钟——未初始化的实例是公开可访问的，不限流可被用来让服务器反复外呼 Telegram。
+
+### 可观测性
+
+- **进程级兜底**：新增 `unhandledRejection`（记录完整栈并继续）与 `uncaughtException`
+  （记录后以非零码退出，交给 systemd / Docker 重启）。此前 Node 22 下未处理的 rejection
+  会直接杀进程，当前请求全断且没有诊断信息。
+
+### 清理
+
+- 删除零引用死组件 `FileCard.vue` / `FolderCard.vue`（仅注释提及，真实列表是
+  `FileListDesktopRows`；此前曾误导把悬停预览接错位置）。
+
+### 验证
+
+- 运行时实测：`/api/health`、`/api/public-config`、`/api/setup/status` 200；
+  `/api/files`、`/api/admin/stats` 401（守卫放行后由业务守卫拒绝）；登录 400（非 403）；
+  `/api/docs-json` 404；向导接口第 11 次起返回 429。
+- 新增 `guard-requirement.guard.spec.ts` 5 条（@Public、控制器级 @Public、路由守卫、
+  控制器守卫、无声明即 403）；后端 jest 1669、前端 vitest 409 通过。
+
 ## [0.26.0] - 2026-11-01
 
 视频内容归类 L2：文件名 + 元数据规则识别。

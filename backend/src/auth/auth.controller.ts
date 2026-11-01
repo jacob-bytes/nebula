@@ -1,3 +1,4 @@
+import { Public } from '../common/decorators/public.decorator';
 import { Controller, Post, Body, Get, UseGuards, Req, Res } from '@nestjs/common';
 import { AuthGuard } from '@nestjs/passport';
 import { Request, Response } from 'express';
@@ -38,6 +39,7 @@ export class AuthController {
     private readonly rateLimitService: RateLimitService,
   ) {}
 
+  @Public()
   @Post('register')
   async register(@Body() registerDto: RegisterDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const ip = getClientIp(req);
@@ -52,6 +54,7 @@ export class AuthController {
     return browserResponse;
   }
 
+  @Public()
   @Post('login')
   async login(@Body() loginDto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const ip = getClientIp(req);
@@ -62,6 +65,7 @@ export class AuthController {
     return browserResponse;
   }
 
+  @Public()
   @Post('logout')
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     const token = typeof req.cookies?.access_token === 'string'
@@ -103,6 +107,7 @@ export class AuthController {
     return { message: '登出成功' };
   }
 
+  @Public()
   @Post('send-code')
   async sendCode(@Body() sendCodeDto: SendCodeDto, @Req() req: Request) {
     const ip = getClientIp(req);
@@ -110,12 +115,14 @@ export class AuthController {
     return { message: '验证码已发送' };
   }
 
+  @Public()
   @Post('verify-email')
   async verifyEmail(@Body() verifyEmailDto: VerifyEmailDto) {
     await this.authService.verifyEmail(verifyEmailDto);
     return { message: '邮箱验证成功' };
   }
 
+  @Public()
   @Post('reset-password')
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request) {
     const ip = getClientIp(req);
@@ -136,6 +143,7 @@ export class AuthController {
     };
   }
 
+  @Public()
   @Get('status')
   async getAuthStatus() {
     return this.authService.getAuthStatus();

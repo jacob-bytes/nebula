@@ -24,6 +24,7 @@ import { buildContentDisposition } from '../common/utils/content-disposition';
 import { RateLimitService } from '../common/services/rate-limit.service';
 import { ConfigCacheService } from '../common/services/config-cache.service';
 import { StreamResponderService } from '../common/services/stream-responder.service';
+import { Public } from '../common/decorators/public.decorator';
 import { ShareService } from './share.service';
 import { FileService } from '../file/file.service';
 import { CreateShareDto, UpdateShareDto, VerifyPasswordDto } from './share.dto';
@@ -229,6 +230,7 @@ export class ShareController {
    * 严格模式：需密码且未通过 access JWT → 只返回 { requiresPassword: true }，
    * 不查询 target 表。
    */
+  @Public()
   @Get('s/:token')
   async getSharePublicInfo(
     @Param('token') token: string,
@@ -243,6 +245,7 @@ export class ShareController {
    * 前端不再持有或拼接 access JWT（C-02 修复）；兼容期已结束（SEC-103），
    * 响应体不再返回 accessJwt，访问凭据仅通过 HttpOnly `share_access` Cookie 下发。
    */
+  @Public()
   @Post('s/:token/verify')
   async verifyPassword(
     @Param('token') token: string,
@@ -257,6 +260,7 @@ export class ShareController {
   }
 
   /** 公开媒体缩略图：鉴权但不计入分享访问/下载次数。 */
+  @Public()
   @Get('s/:token/thumbnail/:fileId')
   async getThumbnail(
     @Param('token') token: string,
@@ -275,6 +279,7 @@ export class ShareController {
   }
 
   /** 公开高清封面：鉴权但不计入分享访问/下载次数。 */
+  @Public()
   @Get('s/:token/thumbnail-hd/:fileId')
   async getHdThumbnail(
     @Param('token') token: string,
@@ -293,6 +298,7 @@ export class ShareController {
   }
 
   /** 分享文件缓存状态：供前端判断冷资源单连接策略，不消费访问次数。 */
+  @Public()
   @Get('s/:token/cache-status/:fileId')
   async getCacheStatus(
     @Param('token') token: string,
@@ -310,6 +316,7 @@ export class ShareController {
    * - 若分享有密码，必须携带有效的访问凭据（HttpOnly Cookie `share_access` 优先，兼容期接受 query ?access=）
    * - fileId 必须属于此分享的 target
    */
+  @Public()
   @Get('s/:token/download/:fileId')
   async downloadFile(
     @Param('token') token: string,
@@ -351,6 +358,7 @@ export class ShareController {
   }
 
   /** 为已验证的分享访问签发短期媒体预览票据；密码凭据仅从 HttpOnly Cookie 读取。 */
+  @Public()
   @Post('s/:token/media-ticket/:fileId')
   async issueShareMediaTicket(
     @Param('token') token: string,
@@ -376,6 +384,7 @@ export class ShareController {
    * 匿名分享媒体取流：票据签发阶段完成密码 Cookie 校验；取流阶段持续校验
    * 分享状态、次数、文件归属和版本，以支持不携带浏览器 Cookie 的 Android 媒体栈。
    */
+  @Public()
   @Get('media/share-ticket')
   async previewShareWithMediaTicket(@Query('ticket') ticket: string, @Req() req: Request, @Res() res: Response) {
     try {
@@ -426,6 +435,7 @@ export class ShareController {
    * - 独立限流（阈值为下载端点的 3 倍）
    * - 防 XSS：html/svg+xml/xml 类型强制降级为 text/plain（配合 nosniff）
    */
+  @Public()
   @Get('s/:token/preview/:fileId')
   async previewFile(
     @Param('token') token: string,
@@ -479,6 +489,7 @@ export class ShareController {
    * 若分享有密码，必须携带有效的访问凭据（HttpOnly Cookie `share_access` 优先，兼容期接受 query ?access=）。
    * 后端校验 folderId 在分享 target 子树内后返回 subfolders + files。
    */
+  @Public()
   @Get('s/:token/folder/:folderId/contents')
   async listFolderContents(
     @Param('token') token: string,
@@ -514,6 +525,7 @@ export class ShareController {
    * 返回从分享根文件夹到当前 folderId 的路径（面包屑）。
    * 同样支持严格模式密码校验。
    */
+  @Public()
   @Get('s/:token/folder/:folderId/breadcrumb')
   async getFolderBreadcrumb(
     @Param('token') token: string,

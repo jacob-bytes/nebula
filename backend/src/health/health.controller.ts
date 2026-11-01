@@ -1,3 +1,4 @@
+import { Public } from '../common/decorators/public.decorator';
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 import { VersionService } from '../version/version.service';
@@ -5,6 +6,7 @@ import { VersionService } from '../version/version.service';
 // 兼容导出：既有测试与外部调用方从此处获取版本读取原语（实现已统一收敛到 VersionService）。
 export { readReleaseVersion } from '../version/version.service';
 
+@Public()
 @Controller()
 export class HealthController {
   constructor(

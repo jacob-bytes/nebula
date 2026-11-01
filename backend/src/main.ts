@@ -20,7 +20,36 @@ import { evaluateDeploymentPreflight } from './config/deployment-preflight';
 import { FileLogger } from './common/file-logger';
 import { isLegacyEncrypted } from './common/utils/crypto.util';
 
+/**
+ * 进程级兜底。
+ *
+ * 背景：此前没有 unhandledRejection / uncaughtException 处理，Node 22 下未处理的
+ * rejection 会直接杀进程，当前请求全断且日志里只有一行栈——排障只能靠猜。
+ *
+ * 取舍：
+ * - unhandledRejection：记录完整栈后继续运行（多数是某个后台任务忘了 catch，
+ *   直接退出会把整站拖下水）；
+ * - uncaughtException：记录后**退出**（进程可能处于不一致状态），由 systemd /
+ *   Docker 重启策略接管。
+ */
+function installProcessSafetyNet(): void {
+  const logger = new Logger('ProcessSafetyNet');
+
+  process.on('unhandledRejection', (reason) => {
+    const detail = reason instanceof Error ? reason.stack ?? reason.message : String(reason);
+    logger.error(`未处理的 Promise 拒绝（已记录并继续运行）：${detail}`);
+  });
+
+  process.on('uncaughtException', (error) => {
+    logger.error(`未捕获异常，进程即将退出：${error.stack ?? error.message}`);
+    // 给日志刷盘留一点时间，再以非零码退出交给服务管理器重启
+    setTimeout(() => process.exit(1), 200).unref();
+  });
+}
+
 async function bootstrap() {
+  // 先装进程级兜底，再做任何可能抛错的事（含文件日志初始化）
+  installProcessSafetyNet();
   const fileLogger = new FileLogger();
   const logger = new Logger('Bootstrap');
 

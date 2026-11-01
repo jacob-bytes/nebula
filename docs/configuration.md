@@ -148,6 +148,7 @@ Redis 承载 8 个 Bull 队列：`metrics-aggregation`、`attack-detection`、`a
 | `THUMBNAIL_DIR` | `tmp/thumbnails` | 缩略图目录 |
 | `FFMPEG_PATH` | `ffmpeg` | 视频封面抽帧使用的 ffmpeg 可执行文件路径 |
 | `FFPROBE_PATH` | `ffprobe` | 视频元数据（时长/分辨率/编码）使用的 ffprobe 路径，随 ffmpeg 一起安装 |
+| `OPENAPI_ENABLED` | `false` | 是否挂载 `/api/docs` 与 `/api/docs-json`。默认关闭（会暴露全部路由结构）；需要时显式设为 `true` |
 | `VIDEO_META_ENABLED` | `true` | 上传完成后用 ffprobe 解析视频元数据并生成「自动·」前缀的技术标签（L1），并做规则归类（L2：剧集/电影/音乐视频/录屏/短视频）；关闭后不分析 |
 | `FILE_PROCESSING_STALE_MINUTES` | `60` | 上传队列僵尸任务恢复阈值（分钟） |
 
