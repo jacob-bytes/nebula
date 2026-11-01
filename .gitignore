@@ -103,3 +103,9 @@ backend/dist-migrator/
 # 发布签名私钥（只允许存在于 CI secret 或离线介质）
 .secrets/
 *.pem.tmp
+# E2E 与 OpenAPI 的本地产物
+.tmp-e2e/
+frontend/.pw-browsers/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/

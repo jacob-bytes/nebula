@@ -6,6 +6,35 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.18.0] - 2026-11-01
+
+浏览器 E2E 与 OpenAPI 自动生成。
+
+### 新增
+
+- **Playwright 浏览器 E2E**（`frontend/e2e/`）：5 条主链路用例——未登录跳转、
+  管理员登录进仪表盘、文件列表渲染种子数据、分享页展示与下载入口、
+  分享页返回带 Open Graph 的服务端 HTML（并断言 og:title 只有一份）。
+- **E2E 启动器** `scripts/e2e/serve.sh` + `scripts/e2e/seed.mjs`：一次性 SQLite 库、
+  确定性测试数据（固定邮箱/密码/token），跑完即删，不碰开发数据。
+- **CI 作业 `Browser E2E / Playwright`**：构建前后端 → 安装 Chromium → 跑用例，
+  失败时上传 report 与 trace。
+- **OpenAPI 自动生成**（`@nestjs/swagger`）：`/api/docs`（Swagger UI 与
+  `/api/docs-json`），含 Cookie 与 API Key 两种安全方案；`OPENAPI_ENABLED=false` 可关闭。
+  导出快照 `docs/openapi.json`（174 条路径）与结构守卫 `openapi-snapshot.spec.ts`。
+- vitest 排除 `e2e/**`：Playwright 用例与 vitest 的 `*.spec.ts` 同名，不排除会在导入时报错。
+
+### 修复
+
+- `scripts/e2e/serve.sh` 的 `$PORT）` 触发 bash 变量名吞字符（本次第三次踩到，
+  已由 `check-shell-var-braces.py` 门禁拦截并把 `scripts/e2e/*.sh` 纳入 CI 检查范围）。
+
+### 验证
+
+- `npx playwright test`：5 passed（9.9s，Chromium）。
+- 前端 vitest 392 通过；后端 jest 1615 通过。
+- `curl /api/docs-json` 返回 174 条路径、版本号与 package.json 一致。
+
 ## [0.17.0] - 2026-11-01
 
 分享页 Open Graph 卡片 + 后台配额管理界面。

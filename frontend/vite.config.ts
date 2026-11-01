@@ -24,6 +24,9 @@ export default defineConfig(({ mode }) => {
 
   return {
     test: {
+      // e2e/ 是 Playwright 用例（@playwright/test 的 test 与 vitest 同名），
+      // 不排除会被 vitest 当成单元测试收集并在导入时直接报错。
+      exclude: ['e2e/**', 'node_modules/**', 'dist/**'],
       coverage: {
         provider: 'v8',
         reporter: ['text', 'lcov', 'json-summary'],

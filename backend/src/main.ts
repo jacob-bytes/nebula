@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { CsrfGuard } from './common/guards/csrf.guard';
+import { setupOpenApi } from './common/openapi';
 import { ShareService } from './share/share.service';
 import { injectShareMeta } from './share/share-og';
 import { readFileSync } from 'fs';
@@ -296,6 +297,9 @@ async function bootstrap() {
   );
 
   // 默认端口与 .env.example / docs/deployment.md 保持一致（3000）
+  // OpenAPI 文档必须在 app.listen 之前挂载，否则路由表已冻结
+  setupOpenApi(app);
+
   const port = process.env.APP_PORT || 3000;
   const host = process.env.APP_HOST || '127.0.0.1';
   const httpServer = await app.listen(port, host);

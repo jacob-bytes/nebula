@@ -1,3 +1,15 @@
+# API 文档
+
+> **自动生成的完整文档**：服务启动后访问 `/api/docs`（Swagger UI）或 `/api/docs-json`（原始 JSON）。
+> 仓库内 `docs/openapi.json` 是快照，由运行中的服务导出；路由与 DTO 变更后请重新导出：
+>
+> ```bash
+> curl -s http://127.0.0.1:3000/api/docs-json -o docs/openapi.json
+> ```
+>
+> 本文档保留面向调用方的手写说明（典型场景、字段含义），接口全集以自动生成文档为准。
+> 设置 `OPENAPI_ENABLED=false` 可关闭文档挂载（不希望暴露路由结构时）。
+
 # API 调用文档
 
 本文档描述通过 **API 密钥（API Key）** 调用星云盘接口的方法。API Key 允许脚本、命令行工具和第三方程序以某个账号身份执行全部文件与文件夹操作，无需维持浏览器登录会话。

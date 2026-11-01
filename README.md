@@ -182,6 +182,7 @@ cd frontend && npm run dev           # /api 代理到 localhost:3000
 | [docs/storage.md](docs/storage.md) | 存储抽象：StorageBackend 端口、S3 读后端、`files` 存储定位字段与切换步骤 |
 | [docs/api-routes.md](docs/api-routes.md) | API 路由清单（公开 / 登录用户 / 管理员） |
 | [docs/API.md](docs/API.md) | API Key 编程调用：认证、文件 / 文件夹 / 分享接口与三种下载链接模式 |
+| [docs/openapi.json](docs/openapi.json) | OpenAPI 3 快照（服务运行时可访问 `/api/docs` 交互式文档） |
 | [docs/development.md](docs/development.md) | 项目结构与常用命令 |
 | [docs/security.md](docs/security.md) | 安全说明 |
 | [frontend/STYLE_GUIDE.md](frontend/STYLE_GUIDE.md) | 前端样式规范（token、双主题、禁用项） |
