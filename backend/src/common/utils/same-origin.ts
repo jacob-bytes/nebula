@@ -23,9 +23,55 @@ export function assertSameOriginWrite(req: Request): void {
     throw new ForbiddenException('非法的 Origin/Referer');
   }
   if (!originHost) return;
-  if (originHost === req.hostname) return;
+
+  // 与请求自身的 Host 头比较（含端口）。
+  // 不能用 req.hostname：Express 会剥掉端口，导致 `http://1.2.3.4:3000` 这类
+  // 直接用 IP+端口访问的部署被判为跨站（真实踩过：向导页「发送测试消息」403）。
+  if (requestHostMatches(req, raw)) return;
   if (isConfiguredCorsHost(originHost)) return;
   throw new ForbiddenException('跨站请求被拒绝');
+}
+
+function sameHostnameOnly(rawOrigin: string, hostname: string): boolean {
+  try {
+    return new URL(rawOrigin).hostname === hostname;
+  } catch {
+    return false;
+  }
+}
+
+/** 归一化端口：http 省略 80、https 省略 443，使 `example.com` 与 `example.com:443` 等价 */
+function normalizePort(protocol: string, port: string): string {
+  if (port) return port;
+  return protocol === 'https:' ? '443' : '80';
+}
+
+/**
+ * 判断 Origin/Referer 是否与「本次请求实际访问的地址」同源。
+ *
+ * 依据请求的 Host 头（含端口）与协议推断请求方看到的地址，再与 Origin 比对。
+ * 只信任 Host 头是安全的：攻击者伪造 Host 也只能把自己的 Origin 判成合法，
+ * 而跨站攻击的关键是「受害者的 Origin 与目标站不同」，无法借此绕过。
+ */
+function requestHostMatches(req: Request, rawOrigin: string): boolean {
+  const hostHeader = (req.headers.host ?? '').trim();
+  // 真实请求必有 Host；单元测试里的请求对象可能只有 hostname，退化为主机名比较
+  if (!hostHeader) return Boolean(req.hostname) && sameHostnameOnly(rawOrigin, req.hostname);
+  let originUrl: URL;
+  try {
+    originUrl = new URL(rawOrigin);
+  } catch {
+    return false;
+  }
+  const protocol = (req.protocol || 'http').toLowerCase();
+  const requestProtocol = protocol === 'https' ? 'https:' : 'http:';
+  // ReferenceError 防御：Host 头可能是 `host:port` 也可能是裸 `host`
+  const [requestHostname, requestPortRaw = ''] = hostHeader.split(':');
+  if (!requestHostname) return false;
+
+  return originUrl.hostname === requestHostname
+    && normalizePort(originUrl.protocol, originUrl.port)
+      === normalizePort(requestProtocol, requestPortRaw);
 }
 
 /** 判断 host 是否属于显式配置允许的跨源来源（CORS_ORIGINS / FRONTEND_URL / APP_URL）。 */

@@ -6,6 +6,28 @@
 格式参考 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循 [SemVer](https://semver.org/lang/zh-CN/)。
 
+## [0.29.8] - 2026-11-01
+
+修复未配置反向代理、直接用 IP+端口访问时所有写请求被判跨站。
+
+### 修复
+
+- **同源校验忽略端口**：`assertSameOriginWrite` 此前拿 `Origin`（含端口）与
+  Express 的 `req.hostname`（**会剥掉端口**）比较，因此 `http://1.2.3.4:3000` 永远匹配不上
+  `1.2.3.4`，任何非默认端口的部署（尤其是首次运行向导点「发送测试消息」）都报
+  「跨站请求被拒绝」。
+  现在改为与请求的 `Host` 头（含端口）比较，并按协议归一化默认端口
+  （`https://example.com` 等价 `example.com:443`）；仅在请求对象没有 Host 头时
+  退回主机名比较（兼容单元测试构造的请求）。
+- 新增 `same-origin.spec.ts` 8 条：IP+端口同源、域名+端口、默认端口等价、
+  不同端口拒绝、不同主机拒绝、CORS 配置放行、无 Origin 的脚本调用放行、非法 Origin 拒绝。
+
+### 验证
+
+- 真实服务实测：`Host/Origin = 1.2.3.4:3999`（而 `APP_URL=127.0.0.1:3000`）→ 400（凭据错误，
+  说明已通过 CSRF）；`Origin = evil.example:3999` → 403（防护未削弱）。
+- 后端 jest 1677 通过。
+
 ## [0.29.7] - 2026-11-01
 
 修复安装脚本函数定义顺序错误（`command not found`）。
